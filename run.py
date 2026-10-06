@@ -5,10 +5,11 @@ from discord import app_commands
 from dotenv import load_dotenv
 from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
+from dungeon_assist.board import render_board
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 
 load_dotenv()
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -56,7 +57,14 @@ async def dndhelp(i):
         ("","/check","Roll a character skill check."),
         ("","/save","Roll a saving throw."),
         ("","/attack","Roll an attack against AC and damage."),
-        ("COMBAT","/hp","Set HP."),
+        ("COMBAT","/board","Render the 2D battle board."),
+        ("","/creature_add","Add a creature to the board."),
+        ("","/creatures","List board creatures."),
+        ("","/creature_move","Move a creature on the grid."),
+        ("","/creature_damage","Damage a board creature."),
+        ("","/creature_heal","Heal a board creature."),
+        ("","/creature_remove","Remove a board creature."),
+        ("","/hp","Set HP."),
         ("","/effect_add","Track an effect or concentration."),
         ("","/effects","Show active effects."),
         ("","/effect_remove","Remove an effect."),
@@ -466,6 +474,40 @@ async def proxy(i, character: str, message: str):
         if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
         await i.followup.send(embed=e)
     except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="creature_add", description="Add a creature to the 2D battle board")
+async def creature_add(i, name: str, hp: int=7, ac: int=12, x: int=5, y: int=3, kind: str="monster"):
+    store.creature_set(gid(i),name,hp,ac,max(0,min(11,x)),max(0,min(7,y)),kind,"👹" if kind=="monster" else "🧙")
+    await i.response.send_message("👹 Creature added.\n**"+name+"**\nHP "+str(hp)+"\nAC "+str(ac)+"\nGrid "+str(x)+","+str(y))
+
+@bot.tree.command(name="creatures", description="List creatures on the 2D battle board")
+async def creatures_cmd(i):
+    rows=store.creatures(gid(i)); await i.response.send_message(("**2D BOARD • CREATURES**\n"+("\n".join(x["icon"]+" **"+x["name"]+"** • HP "+str(x["hp"])+"/"+str(x["max_hp"])+" • AC "+str(x["ac"])+" • "+str(x["x"])+","+str(x["y"]) for x in rows) or "No creatures yet."))[:1900])
+
+@bot.tree.command(name="creature_move", description="Move a creature on the 2D grid")
+async def creature_move(i, name: str, x: int, y: int):
+    x=max(0,min(11,x)); y=max(0,min(7,y)); store.creature_move(gid(i),name,x,y)
+    await i.response.send_message("📍 **"+name+"**\nMoved to "+str(x)+","+str(y))
+
+@bot.tree.command(name="creature_damage", description="Damage a board creature")
+async def creature_damage(i, name: str, amount: int):
+    hp=store.creature_hp(gid(i),name,-abs(amount)); await i.response.send_message("💥 **"+name+"**\nHP "+str(hp))
+
+@bot.tree.command(name="creature_heal", description="Heal a board creature")
+async def creature_heal(i, name: str, amount: int):
+    hp=store.creature_hp(gid(i),name,abs(amount)); await i.response.send_message("💚 **"+name+"**\nHP "+str(hp))
+
+@bot.tree.command(name="creature_remove", description="Remove a creature from the board")
+async def creature_remove(i, name: str):
+    store.creature_remove(gid(i),name); await i.response.send_message("Creature removed.\n**"+name+"**")
+
+@bot.tree.command(name="board", description="Render the current 2D battle board in Discord")
+async def board(i):
+    rows=store.creatures(gid(i)); image=render_board(rows)
+    file=discord.File(image,filename="dungeon-board.png")
+    embed=discord.Embed(title="⚔️ Dungeon Assist • Battle Board",description=("Creatures: "+str(len(rows))+"\nUse /creature_move, /creature_damage, /creature_heal, or /ai."))
+    embed.set_image(url="attachment://dungeon-board.png")
+    await i.response.send_message(embed=embed,file=file)
 
 @bot.tree.command(name="effect_add", description="Track a character effect")
 async def effect_add(i, character: str, effect: str, rounds: int=0, concentration: bool=False):
