@@ -20,8 +20,24 @@ class Store:
         CREATE TABLE IF NOT EXISTS factions(guild INTEGER,name TEXT COLLATE NOCASE,description TEXT DEFAULT '',reputation INTEGER DEFAULT 0,PRIMARY KEY(guild,name));
         CREATE TABLE IF NOT EXISTS effects(guild INTEGER,character TEXT COLLATE NOCASE,name TEXT COLLATE NOCASE,rounds INTEGER DEFAULT 0,concentration INTEGER DEFAULT 0,PRIMARY KEY(guild,character,name));
         CREATE TABLE IF NOT EXISTS campaign_settings(guild INTEGER PRIMARY KEY,reset_locked INTEGER DEFAULT 1,theme TEXT DEFAULT 'fantasy');
-        CREATE TABLE IF NOT EXISTS creatures(guild INTEGER,name TEXT COLLATE NOCASE,kind TEXT DEFAULT 'monster',hp INTEGER DEFAULT 1,max_hp INTEGER DEFAULT 1,ac INTEGER DEFAULT 10,x INTEGER DEFAULT 0,y INTEGER DEFAULT 0,icon TEXT DEFAULT '👹',notes TEXT DEFAULT '',PRIMARY KEY(guild,name));
+        CREATE TABLE IF NOT EXISTS creatures(guild INTEGER,name TEXT COLLATE NOCASE,kind TEXT DEFAULT 'monster',hp INTEGER DEFAULT 1,max_hp INTEGER DEFAULT 1,ac INTEGER DEFAULT 10,x INTEGER DEFAULT 0,y INTEGER DEFAULT 0,icon TEXT DEFAULT '👹',notes TEXT DEFAULT '',PRIMARY KEY(guild,name));\n        CREATE TABLE IF NOT EXISTS guild_access(guild INTEGER PRIMARY KEY,gm_role INTEGER,vtt_token TEXT NOT NULL);
         """)
+    def guild_access(self,g):
+        r=self.db.execute("SELECT * FROM guild_access WHERE guild=?",(g,)).fetchone()
+        if not r:
+            import secrets
+            token=secrets.token_urlsafe(32)
+            self.db.execute("INSERT INTO guild_access(guild,vtt_token) VALUES(?,?)",(g,token)); self.db.commit()
+            r=self.db.execute("SELECT * FROM guild_access WHERE guild=?",(g,)).fetchone()
+        return dict(r)
+    def set_gm_role(self,g,role_id):
+        self.guild_access(g)
+        self.db.execute("UPDATE guild_access SET gm_role=? WHERE guild=?",(role_id,g)); self.db.commit()
+    def rotate_vtt_token(self,g):
+        import secrets
+        token=secrets.token_urlsafe(32); self.guild_access(g)
+        self.db.execute("UPDATE guild_access SET vtt_token=? WHERE guild=?",(token,g)); self.db.commit(); return token
+
     def _campaign(self,g):
         if not self.db.execute("SELECT 1 FROM campaigns WHERE guild=?",(g,)).fetchone(): raise ValueError("Run /campaign_setup first.")
     def setup_campaign(self,g,name):
