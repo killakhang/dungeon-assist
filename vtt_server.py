@@ -14,7 +14,7 @@ store=Store(os.getenv("DUNGEON_DB","dungeon_assist.db"))
 clients={}
 
 def state(guild):
-    return {"type":"state","guild":guild,"creatures":store.creatures(guild),"initiative":store.initiative(guild),"combat":store.combat_state(guild)}
+    return {"type":"state","guild":guild,"scene":store.vtt_scene(guild),"creatures":store.creatures(guild),"walls":store.vtt_walls(guild),"lights":store.vtt_lights(guild),"initiative":store.initiative(guild),"combat":store.combat_state(guild)}
 
 async def broadcast(guild):
     dead=[]
@@ -52,6 +52,12 @@ async def socket(ws:WebSocket,guild:int):
                 store.creature_hp(guild,name,-abs(int(msg.get("amount",1))))
             elif action=="heal":
                 store.creature_hp(guild,name,abs(int(msg.get("amount",1))))
+            elif action=="door":
+                store.vtt_door_toggle(guild,int(msg["id"]))
+            elif action=="wall_add":
+                store.vtt_wall_add(guild,msg["x1"],msg["y1"],msg["x2"],msg["y2"],msg.get("kind","wall"),msg.get("door_state","closed"))
+            elif action=="light_add":
+                store.vtt_light_add(guild,msg["x"],msg["y"],msg.get("radius",4),msg.get("bright",2))
             elif action=="refresh":
                 pass
             else:
