@@ -5,27 +5,44 @@ from pathlib import Path
 from openai import OpenAI
 
 CHARACTER_DIR = Path(__file__).resolve().parent.parent / "config" / "characters"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
-def ai_enabled():
+def _ollama_enabled():
+    return os.getenv("OLLAMA_ENABLED", "true").lower() not in {"0", "false", "no", "off"}
+
+
+def _openrouter_enabled():
     return bool(os.getenv("OPENROUTER_API_KEY"))
 
 
-def _client():
+def ai_enabled():
+    return _ollama_enabled() or _openrouter_enabled()
+
+
+def _ollama_client():
+    return OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+
+
+def _openrouter_client():
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
-        raise RuntimeError("AI is not configured. Set OPENROUTER_API_KEY.")
+        raise RuntimeError("OPENROUTER_API_KEY is not configured.")
     return OpenAI(base_url=OPENROUTER_BASE_URL, api_key=key)
 
 
-def _model():
+def _ollama_model():
+    return os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
+
+
+def _openrouter_model():
     return os.getenv("OPENROUTER_MODEL", "openrouter/free")
 
 
-def _chat(instructions, prompt):
-    response = _client().chat.completions.create(
-        model=_model(),
+def _completion(client, model, instructions, prompt):
+    response = client.chat.completions.create(
+        model=model,
         messages=[
             {"role": "system", "content": instructions},
             {"role": "user", "content": prompt},
@@ -33,8 +50,30 @@ def _chat(instructions, prompt):
     )
     text = response.choices[0].message.content
     if not text:
-        raise RuntimeError("OpenRouter returned an empty response.")
+        raise RuntimeError(f"{model} returned an empty response.")
     return text.strip()
+
+
+def _chat(instructions, prompt):
+    errors = []
+
+    if _ollama_enabled():
+        try:
+            return _completion(_ollama_client(), _ollama_model(), instructions, prompt)
+        except Exception as exc:
+            errors.append(f"Ollama: {exc}")
+
+    if _openrouter_enabled():
+        try:
+            return _completion(_openrouter_client(), _openrouter_model(), instructions, prompt)
+        except Exception as exc:
+            errors.append(f"OpenRouter: {exc}")
+
+    if errors:
+        raise RuntimeError("AI providers failed. " + " | ".join(errors))
+    raise RuntimeError(
+        "AI is not configured. Start Ollama locally or set OPENROUTER_API_KEY."
+    )
 
 
 def load_seed(name):
@@ -46,7 +85,9 @@ def load_seed(name):
 
 def ask_ai(prompt, character=None, purpose="D&D assistant"):
     if not ai_enabled():
-        raise RuntimeError("AI is not configured. Set OPENROUTER_API_KEY.")
+        raise RuntimeError(
+            "AI is not configured. Start Ollama locally or set OPENROUTER_API_KEY."
+        )
     seed = load_seed(character) if character else {}
     instructions = (
         "You are Dungeon Assist, a beginner-friendly D&D assistant. "
@@ -63,7 +104,9 @@ def ask_ai(prompt, character=None, purpose="D&D assistant"):
 def plan_action(message, context=None):
     """Translate natural language into one validated Dungeon Assist action."""
     if not ai_enabled():
-        raise RuntimeError("AI is not configured. Set OPENROUTER_API_KEY.")
+        raise RuntimeError(
+            "AI is not configured. Start Ollama locally or set OPENROUTER_API_KEY."
+        )
     schema = {
         "action": "chat|damage|heal|temp_hp|set_hp|condition_add|condition_remove|sheet_edit|initiative_add|combat_begin|combat_next|combat_prev|combat_status|combat_end|scene|note|quest_add|lore_add|relationship",
         "character": "string or null",
