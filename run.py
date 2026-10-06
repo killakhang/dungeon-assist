@@ -27,7 +27,7 @@ def gid(i):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("Dungeon Assist v" + VERSION + " ready as", bot.user)
+    print("Dungeon Buddy v" + VERSION + " ready as", bot.user)
 
 @bot.tree.error
 async def tree_error(i, error):
@@ -37,11 +37,11 @@ async def tree_error(i, error):
     else:
         await i.response.send_message("Warning: " + msg, ephemeral=True)
 
-@bot.tree.command(name="dndhelp", description="Show every Dungeon Assist command")
+@bot.tree.command(name="dndhelp", description="Show every Dungeon Buddy command")
 async def dndhelp(i):
     items=[
-        ("SYSTEM","/ai","Tell Dungeon Assist what you want in normal language."),
-        ("","/version","Show the running Dungeon Assist version."),
+        ("SYSTEM","/ai","Tell Dungeon Buddy what you want in normal language."),
+        ("","/version","Show the running Dungeon Buddy version."),
         ("CHARACTERS","/character_create","Create a character."),
         ("","/character_show","Show a character sheet."),
         ("","/character_edit","Edit a sheet field."),
@@ -107,7 +107,7 @@ async def dndhelp(i):
         ("","/snapshot","Create a recovery snapshot."),
         ("","/reset_campaign","Reset campaign state with RESET confirmation."),
     ]
-    e=discord.Embed(title="🏰 Dungeon Assist v" + VERSION,description="AI: "+("READY" if ai_enabled() else "NOT CONFIGURED"))
+    e=discord.Embed(title="🏰 Dungeon Buddy v" + VERSION,description="AI: "+("READY" if ai_enabled() else "NOT CONFIGURED"))
     text=[]
     for section,cmd,desc in items:
         if section: text.append("**"+section+"**")
@@ -122,7 +122,7 @@ async def dndhelp(i):
     e.set_footer(text="Every command is printed vertically.")
     await i.response.send_message(embed=e)
 
-@bot.tree.command(name="ai", description="Tell Dungeon Assist what you want in normal language")
+@bot.tree.command(name="ai", description="Tell Dungeon Buddy what you want in normal language")
 @app_commands.describe(message="Example: Wopples takes 7 damage")
 async def ai_command(i, message: str):
     g=gid(i)
@@ -174,15 +174,15 @@ async def ai_command(i, message: str):
         elif a=="relationship":
             r=store.relationship_set(g,name,str(p.get("target")),str(p.get("metric")),int(p.get("value") or 0)); out="❤️ **"+name+" → "+str(p.get("target"))+"**\n"+str(p.get("metric")).title()+" "+str(r[str(p.get("metric"))])
         else:
-            out=ask_ai(message,purpose="Dungeon Assist conversational interface")
+            out=ask_ai(message,purpose="Dungeon Buddy conversational interface")
         if a!="chat": store.event(g,"ai_action",message+" => "+a,i.user.id)
         await i.followup.send(out[:1900])
     except Exception as e:
         await i.followup.send("I couldn't safely do that.\n"+str(e))
 
-@bot.tree.command(name="version", description="Show the running Dungeon Assist version")
+@bot.tree.command(name="version", description="Show the running Dungeon Buddy version")
 async def version(i):
-    e=discord.Embed(title="Dungeon Assist", description="**Version**\n"+VERSION+"\n**AI**\n"+("READY" if ai_enabled() else "NOT CONFIGURED"))
+    e=discord.Embed(title="Dungeon Buddy", description="**Version**\n"+VERSION+"\n**AI**\n"+("READY" if ai_enabled() else "NOT CONFIGURED"))
     e.set_footer(text="Use /dndhelp to see commands.")
     await i.response.send_message(embed=e)
 
@@ -460,7 +460,7 @@ def sheet_embed(s):
     for key,label in [("strength","STR"),("dexterity","DEX"),("constitution","CON"),("intelligence","INT"),("wisdom","WIS"),("charisma","CHA")]:
         stats.append(label+" "+str(s.get(key) if s.get(key) is not None else "—"))
     e.add_field(name="Abilities",value="\n".join(stats),inline=False)
-    e.set_footer(text="Dungeon Assist • character sheet")
+    e.set_footer(text="Dungeon Buddy • character sheet")
     return e
 
 SKILLS={"acrobatics":"dexterity","animal_handling":"wisdom","arcana":"intelligence","athletics":"strength","deception":"charisma","history":"intelligence","insight":"wisdom","intimidation":"charisma","investigation":"intelligence","medicine":"wisdom","nature":"intelligence","perception":"wisdom","performance":"charisma","persuasion":"charisma","religion":"intelligence","sleight_of_hand":"dexterity","stealth":"dexterity","survival":"wisdom"}
@@ -623,7 +623,7 @@ async def creature_remove(i, name: str):
 async def board(i):
     rows=store.creatures(gid(i)); image=render_board(rows)
     file=discord.File(image,filename="dungeon-board.png")
-    embed=discord.Embed(title="⚔️ Dungeon Assist • Battle Board",description=("Creatures: "+str(len(rows))+"\nUse /creature_move, /creature_damage, /creature_heal, or /ai."))
+    embed=discord.Embed(title="⚔️ Dungeon Buddy • Battle Board",description=("Creatures: "+str(len(rows))+"\nUse /creature_move, /creature_damage, /creature_heal, or /ai."))
     embed.set_image(url="attachment://dungeon-board.png")
     await i.response.send_message(embed=embed,file=file)
 
@@ -658,7 +658,7 @@ async def faction(i, name: str, description: str="", reputation: int=0):
 async def factions(i):
     rows=store.factions(gid(i)); await i.response.send_message(("**FACTIONS**\n"+("\n".join("🏳️ **"+x["name"]+"**\nReputation "+str(x["reputation"])+"\n"+x["description"] for x in rows) or "None."))[:1900])
 
-@bot.tree.command(name="theme", description="Choose Dungeon Assist presentation theme")
+@bot.tree.command(name="theme", description="Choose Dungeon Buddy presentation theme")
 @app_commands.choices(name=[app_commands.Choice(name=x,value=x) for x in ["cute","fantasy","dark","goofy","minimal"]])
 async def theme(i, name: app_commands.Choice[str]):
     store.set_theme(gid(i),name.value); await i.response.send_message("🎨 Theme\n**"+name.value.title()+"**")
