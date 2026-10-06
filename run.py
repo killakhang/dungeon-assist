@@ -11,7 +11,7 @@ from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 
 load_dotenv()
-VERSION = "0.9.1"
+VERSION = "0.9.2"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
