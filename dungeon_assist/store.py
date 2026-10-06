@@ -7,7 +7,7 @@ class Store:
         self.db.row_factory=sqlite3.Row
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS campaigns(guild INTEGER PRIMARY KEY,name TEXT,scene TEXT DEFAULT '');
-        CREATE TABLE IF NOT EXISTS characters(guild INTEGER,name TEXT COLLATE NOCASE,owner INTEGER,class TEXT,level INTEGER DEFAULT 1,hp INTEGER,max_hp INTEGER,conditions TEXT DEFAULT '',PRIMARY KEY(guild,name));
+        CREATE TABLE IF NOT EXISTS characters(guild INTEGER,name TEXT COLLATE NOCASE,owner INTEGER,class TEXT,level INTEGER DEFAULT 1,hp INTEGER,max_hp INTEGER,conditions TEXT DEFAULT '',PRIMARY KEY(guild,name));\n        CREATE TABLE IF NOT EXISTS character_sheets(guild INTEGER,name TEXT COLLATE NOCASE,data TEXT DEFAULT '{}',PRIMARY KEY(guild,name));
         CREATE TABLE IF NOT EXISTS initiative(guild INTEGER,name TEXT,total INTEGER);
         CREATE TABLE IF NOT EXISTS quests(guild INTEGER,title TEXT,status TEXT DEFAULT 'active');
         CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTEGER,kind TEXT,text TEXT,actor INTEGER,created TEXT);
@@ -19,6 +19,22 @@ class Store:
         self.db.execute("INSERT INTO campaigns(guild,name) VALUES(?,?) ON CONFLICT(guild) DO UPDATE SET name=excluded.name",(g,name)); self.db.commit()
     def create_character(self,g,owner,name,cls,max_hp):
         self._campaign(g); self.db.execute("INSERT OR REPLACE INTO characters(guild,name,owner,class,hp,max_hp) VALUES(?,?,?,?,?,?)",(g,name,owner,cls,max_hp,max_hp)); self.db.commit()
+    def save_sheet(self,g,name,data):
+        self.character(g,name)
+        self.db.execute("INSERT INTO character_sheets(guild,name,data) VALUES(?,?,?) ON CONFLICT(guild,name) DO UPDATE SET data=excluded.data",(g,name,json.dumps(data)))
+        self.db.commit()
+        return self.sheet(g,name)
+    def sheet(self,g,name):
+        c=self.character(g,name)
+        r=self.db.execute("SELECT data FROM character_sheets WHERE guild=? AND name=?",(g,name)).fetchone()
+        extra=json.loads(r["data"]) if r else {}
+        return {**c, **extra}
+    def patch_sheet(self,g,name,updates):
+        current=self.sheet(g,name)
+        base={"guild","name","owner","class","level","hp","max_hp","conditions"}
+        extra={k:v for k,v in current.items() if k not in base}
+        extra.update(updates)
+        return self.save_sheet(g,name,extra)
     def character(self,g,name):
         r=self.db.execute("SELECT * FROM characters WHERE guild=? AND name=?",(g,name)).fetchone()
         if not r: raise ValueError("Character not found.")
