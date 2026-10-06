@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.board import render_board
+from dungeon_assist.character2024 import DEFAULT_2024, next_question
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 
@@ -237,6 +238,67 @@ async def character_create(i, name: str, character_class: str = "Unchosen", spec
         "AI explains what the sheet means.",
     ]
     await i.response.send_message("\n".join(lines))
+class Learn2024View(discord.ui.View):
+    def __init__(self, character, field, explanation):
+        super().__init__(timeout=300)
+        self.character=character
+        self.field=field
+        self.explanation=explanation
+
+    @discord.ui.button(label="What is this?", style=discord.ButtonStyle.secondary, emoji="❓")
+    async def learn(self, i: discord.Interaction, button: discord.ui.Button):
+        await i.response.send_message("**"+self.field+" — beginner explanation**\n"+self.explanation+"\n\nWhen you're ready, use /character_build_2024 again. Your character is still saved.", ephemeral=True)
+
+@bot.tree.command(name="character_create_2024", description="Create a beginner-friendly 2024 rules character")
+async def character_create_2024(i, name: str):
+    try:
+        store.character(gid(i),name)
+        s=store.sheet(gid(i),name)
+        for k,v in DEFAULT_2024.items():
+            if not s.get(k): s[k]=v
+        store.save_sheet(gid(i),name,s)
+        q=next_question(s)
+        if q:
+            await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+name+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nWhen you know your answer, use /character_answer_2024.",view=Learn2024View(name,q["label"],q["explanation"]))
+        else:
+            await i.response.send_message("✅ **"+name+"** already has the core 2024 builder fields.")
+    except Exception as e:
+        await i.response.send_message("Could not start builder: "+str(e),ephemeral=True)
+
+@bot.tree.command(name="character_build_2024", description="Continue the beginner-friendly 2024 character builder")
+async def character_build_2024(i, character: str):
+    s=store.sheet(gid(i),character)
+    q=next_question(s)
+    if not q:
+        await i.response.send_message("✅ **Core character setup complete.**\nUse /character_show to review "+character+".")
+        return
+    await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+character+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nAnswer with /character_answer_2024.",view=Learn2024View(character,q["label"],q["explanation"]))
+
+@bot.tree.command(name="character_answer_2024", description="Answer the current 2024 character-builder question")
+async def character_answer_2024(i, character: str, answer: str):
+    s=store.sheet(gid(i),character)
+    q=next_question(s)
+    if not q:
+        await i.response.send_message("✅ Core setup is already complete.")
+        return
+    value=answer.strip()
+    if q["key"] in {"strength","dexterity","constitution","intelligence","wisdom","charisma"}:
+        try:
+            value=int(value)
+        except ValueError:
+            await i.response.send_message("That ability score needs to be a number. Tap **What is this?** on the builder if you'd like an explanation.",ephemeral=True)
+            return
+        if value < 1 or value > 30:
+            await i.response.send_message("Please enter an ability score from 1 to 30.",ephemeral=True)
+            return
+    s[q["key"]]=value
+    store.save_sheet(gid(i),character,s)
+    nxt=next_question(s)
+    if not nxt:
+        await i.response.send_message("✅ **Core 2024 character setup complete!**\n"+character+" is saved.\nUse **/character_show** to review the sheet.")
+        return
+    await i.response.send_message("✅ Saved **"+q["label"]+"**: "+str(value)+"\n\n**Next — "+nxt["label"]+"**\n"+nxt["question"]+"\n\nIf you don't know what this means, tap **What is this?**.",view=Learn2024View(character,nxt["label"],nxt["explanation"]))
+
 @bot.tree.command(name="character_show", description="Show a clean character sheet")
 async def character_show(i, name: str):
     s = store.sheet(gid(i), name)
