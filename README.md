@@ -25,7 +25,39 @@ Discord-first D&D assistant and DM simulation platform.
 7. Invite the bot with application commands and only the channel permissions you want.
 8. `python run.py`
 
-## Free AI with OpenRouter
+## Local AI with Ollama + OpenRouter fallback
+
+Dungeon Assist now prefers a self-hosted Ollama model on the same machine. The default is `qwen2.5:0.5b` at `http://127.0.0.1:11434/v1`. Local inference has no per-request API provider charge; the machine running the model still has its normal compute cost.
+
+Install Ollama, pull the default model, and verify it is available:
+
+```bash
+ollama pull qwen2.5:0.5b
+ollama list
+```
+
+Configuration:
+
+```env
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+OLLAMA_MODEL=qwen2.5:0.5b
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
+```
+
+Provider order is:
+
+1. Local Ollama
+2. OpenRouter fallback, when `OPENROUTER_API_KEY` is configured
+
+Set `OLLAMA_ENABLED=false` to skip local inference and use OpenRouter directly.
+
+Core game systems such as dice, combat, HP, character sheets, initiative, quests, campaign state, and SQLite persistence remain local and do not require an AI request. AI is used for conversational assistance, roleplay/proxy responses, creative help, and natural-language action planning.
+
+Never commit Discord tokens or AI API keys to GitHub.
+
+## Previous OpenRouter setup
 
 Dungeon Assist uses OpenRouter for optional AI features. The default model route is `openrouter/free`, so the bot can use models currently available through OpenRouter's free router without requiring an OpenAI API key.
 
