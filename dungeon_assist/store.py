@@ -15,6 +15,8 @@ class Store:
         CREATE TABLE IF NOT EXISTS combat_state(guild INTEGER PRIMARY KEY,turn INTEGER DEFAULT 0,round INTEGER DEFAULT 1,active INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS relationships(guild INTEGER,source TEXT,target TEXT,affinity INTEGER DEFAULT 0,trust INTEGER DEFAULT 0,fear INTEGER DEFAULT 0,resentment INTEGER DEFAULT 0,PRIMARY KEY(guild,source,target));
         CREATE TABLE IF NOT EXISTS lore(guild INTEGER,key TEXT COLLATE NOCASE,text TEXT,secret INTEGER DEFAULT 0,PRIMARY KEY(guild,key));
+        CREATE TABLE IF NOT EXISTS character_memory(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTEGER,character TEXT COLLATE NOCASE,kind TEXT,text TEXT,importance INTEGER DEFAULT 50,created TEXT);
+        CREATE TABLE IF NOT EXISTS character_knowledge(guild INTEGER,character TEXT COLLATE NOCASE,key TEXT COLLATE NOCASE,text TEXT,source TEXT DEFAULT 'campaign',PRIMARY KEY(guild,character,key));
         """)
     def _campaign(self,g):
         if not self.db.execute("SELECT 1 FROM campaigns WHERE guild=?",(g,)).fetchone(): raise ValueError("Run /campaign_setup first.")
@@ -96,9 +98,24 @@ class Store:
         r=self.db.execute(q,(g,key)).fetchone()
         if not r or (r["secret"] and not include_secret): raise ValueError("Lore entry not found.")
         return dict(r)
+    def memory_add(self,g,character,text,kind="memory",importance=50):
+        self.character(g,character); importance=max(0,min(100,int(importance)))
+        self.db.execute("INSERT INTO character_memory(guild,character,kind,text,importance,created) VALUES(?,?,?,?,?,?)",(g,character,kind,text,importance,datetime.now(timezone.utc).isoformat())); self.db.commit()
+    def memories(self,g,character,limit=20):
+        self.character(g,character)
+        return [dict(x) for x in self.db.execute("SELECT id,kind,text,importance,created FROM character_memory WHERE guild=? AND character=? ORDER BY importance DESC,id DESC LIMIT ?",(g,character,limit))]
+    def knowledge_set(self,g,character,key,text,source="campaign"):
+        self.character(g,character)
+        self.db.execute("INSERT INTO character_knowledge(guild,character,key,text,source) VALUES(?,?,?,?,?) ON CONFLICT(guild,character,key) DO UPDATE SET text=excluded.text,source=excluded.source",(g,character,key,text,source)); self.db.commit()
+    def knowledge(self,g,character):
+        self.character(g,character)
+        return [dict(x) for x in self.db.execute("SELECT key,text,source FROM character_knowledge WHERE guild=? AND character=? ORDER BY key",(g,character))]
+    def character_context(self,g,character):
+        return {"sheet":self.sheet(g,character),"memories":self.memories(g,character,12),"knowledge":self.knowledge(g,character),"relationships":self.relationships(g,character)}
+
     def campaign_reset(self,g):
         self._campaign(g)
-        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state"):
+        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state","character_memory","character_knowledge"):
             self.db.execute("DELETE FROM "+table+" WHERE guild=?",(g,))
         self.db.execute("UPDATE campaigns SET scene='' WHERE guild=?",(g,)); self.db.commit()
 
