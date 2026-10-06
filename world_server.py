@@ -1,5 +1,5 @@
 """Wopples World v0.1 authoritative multiplayer server."""
-import asyncio, json, os, time
+import asyncio, json, os, time, subprocess, sys
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 import uvicorn
@@ -11,6 +11,27 @@ app=FastAPI(title="Wopples World")
 players={}
 clients=set()
 lock=asyncio.Lock()
+bot_process=None
+
+@app.on_event("startup")
+async def start_discord_bot():
+    global bot_process
+    if os.getenv("DISCORD_TOKEN"):
+        bot_process=subprocess.Popen([sys.executable, "run.py"])
+        print(f"Dungeon Assist Discord bot started (pid={bot_process.pid})", flush=True)
+    else:
+        print("DISCORD_TOKEN is not set; Discord bot not started.", flush=True)
+
+@app.on_event("shutdown")
+async def stop_discord_bot():
+    global bot_process
+    if bot_process and bot_process.poll() is None:
+        bot_process.terminate()
+        try:
+            bot_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            bot_process.kill()
+
 
 @app.get("/world")
 async def world():
