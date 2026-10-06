@@ -8,6 +8,7 @@ from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed
 
 load_dotenv()
+VERSION = "0.4.1"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -23,7 +24,7 @@ def gid(i):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("Dungeon Assist v0.4 ready as", bot.user)
+    print("Dungeon Assist v" + VERSION + " ready as", bot.user)
 
 @bot.tree.error
 async def tree_error(i, error):
@@ -36,6 +37,7 @@ async def tree_error(i, error):
 @bot.tree.command(name="dndhelp", description="Show every Dungeon Assist command")
 async def dndhelp(i):
     items=[
+        ("SYSTEM","/version","Show the running Dungeon Assist version."),
         ("CHARACTERS","/character_create","Create a character."),
         ("","/character_show","Show a character sheet."),
         ("","/character_edit","Edit a sheet field."),
@@ -76,7 +78,7 @@ async def dndhelp(i):
         ("","/snapshot","Create a recovery snapshot."),
         ("","/reset_campaign","Reset campaign state with RESET confirmation."),
     ]
-    e=discord.Embed(title="🏰 Dungeon Assist v0.4",description="AI: "+("READY" if ai_enabled() else "NOT CONFIGURED"))
+    e=discord.Embed(title="🏰 Dungeon Assist v" + VERSION,description="AI: "+("READY" if ai_enabled() else "NOT CONFIGURED"))
     text=[]
     for section,cmd,desc in items:
         if section: text.append("**"+section+"**")
@@ -89,6 +91,12 @@ async def dndhelp(i):
     if current: chunks.append(current)
     for n,ch in enumerate(chunks): e.add_field(name="Commands" if n==0 else "Continued",value=ch,inline=False)
     e.set_footer(text="Every command is printed vertically.")
+    await i.response.send_message(embed=e)
+
+@bot.tree.command(name="version", description="Show the running Dungeon Assist version")
+async def version(i):
+    e=discord.Embed(title="Dungeon Assist", description="**Version**\n"+VERSION+"\n**AI**\n"+("READY" if ai_enabled() else "NOT CONFIGURED"))
+    e.set_footer(text="Use /dndhelp to see commands.")
     await i.response.send_message(embed=e)
 
 @bot.tree.command(name="campaign_setup", description="Create or select this server campaign")
