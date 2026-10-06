@@ -40,6 +40,8 @@ async def world_ws(ws:WebSocket):
             elif action=="dodge": combat.dodge(pid,float(data.get("dx",1)),float(data.get("dy",0)))
             elif action=="spawn_squad": combat.spawn_squad(min(8,max(1,int(data.get("count",5)))))
             elif action=="spawn_boss": combat.spawn_boss()
+            elif action=="heal": combat.heal(pid)
+            elif action=="revive": combat.revive(pid,str(data.get("target_id","")))
             combat.tick(.08)
             async with lock:
                 p=players[pid]
