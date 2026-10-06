@@ -7,9 +7,10 @@ from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.board import render_board
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
+from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 
 load_dotenv()
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -45,6 +46,9 @@ async def dndhelp(i):
         ("","/character_edit","Edit a sheet field."),
         ("","/character_fill","AI suggests missing sheet information."),
         ("","/character_explain","Explain the sheet for a beginner."),
+        ("","/sheet_help","Explain a 2024 sheet field."),
+        ("","/sheet_check","Validate core 2024 sheet fields."),
+        ("","/character_sheet","Show a 2024 character sheet."),
         ("","/character_ai","Use the character AI with memory and knowledge."),
         ("","/character_build","AI walks you through missing character fields."),
         ("","/remember","Give a character a persistent memory."),
@@ -198,7 +202,7 @@ async def character_create(i, name: str, character_class: str = "Unchosen", spec
     max_hp = max(1, max_hp)
     store.create_character(gid(i), i.user.id, name, character_class, max_hp)
     store.save_sheet(gid(i), name, {
-        "ruleset": "2014_5e",
+        "ruleset": RULESET,
         "species": species,
         "background": mech.get("background", "Unchosen"),
         "alignment": mech.get("alignment", "Unchosen"),
@@ -310,6 +314,34 @@ async def knows(i, character: str):
     rows=store.knowledge(gid(i),character)
     text="\n".join("📖 **"+x["key"]+"**\n"+x["text"] for x in rows) or "No character-specific knowledge stored."
     await i.response.send_message(("**"+character+" • KNOWLEDGE**\n"+text)[:1900])
+
+@bot.tree.command(name="sheet_help", description="Explain a 2024 character-sheet topic")
+@app_commands.describe(topic="Examples: ability_scores, proficiency, armor_class, background, origin_feat")
+async def sheet_help(i, topic: str):
+    await i.response.send_message("**2024 SHEET HELP — " + topic.replace("_"," ").upper() + "**\n" + help_topic(topic))
+
+@bot.tree.command(name="sheet_check", description="Check a character sheet for missing or inconsistent 2024 fields")
+async def sheet_check(i, name: str):
+    s = store.sheet(gid(i), name)
+    issues = check_sheet(s)
+    if issues:
+        await i.response.send_message("**2024 SHEET CHECK — " + name + "**\n" + "\n".join("• " + x for x in issues))
+    else:
+        await i.response.send_message("✅ **" + name + "** passes the core 2024 sheet checks.")
+
+@bot.tree.command(name="character_sheet", description="Show the current character sheet")
+async def character_sheet(i, name: str):
+    s = store.sheet(gid(i), name)
+    def v(k):
+        x=s.get(k)
+        return "Unchosen" if x in (None,"",[]) else str(x)
+    text=("**"+s["name"]+" — 2024 CHARACTER SHEET**\n"
+          +"Species: "+v("species")+"\nClass: "+v("class")+" "+str(s.get("level",1))+"\n"
+          +"Background: "+v("background")+"\nHP: "+str(s["hp"])+"/"+str(s["max_hp"])+"\n"
+          +"STR "+v("strength")+" | DEX "+v("dexterity")+" | CON "+v("constitution")+"\n"
+          +"INT "+v("intelligence")+" | WIS "+v("wisdom")+" | CHA "+v("charisma")+"\n"
+          +"Use /sheet_check to find missing fields and /sheet_help to learn what they mean.")
+    await i.response.send_message(text)
 
 @bot.tree.command(name="character_explain", description="Explain a character sheet for a complete beginner")
 async def character_explain(i, name: str):
