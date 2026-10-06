@@ -5,7 +5,7 @@
     "class": "Paladin",
     "level": 1,
     "background": "Soldier",
-    "alignment": "Chaotic Good"
+    "alignment": "Chaotic Neutral"
   },
   "roleplay_personas": {
     "canonical": {
@@ -33,5 +33,6 @@
   "notes": [
     "Saved Level-5 sheet is historical reference only.",
     "Unknown Level-1 mechanics remain unset until confirmed."
-  ]
+  ],
+  "active_persona": "chaotic_goblin"
 }
