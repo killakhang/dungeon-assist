@@ -17,6 +17,9 @@ class Store:
         CREATE TABLE IF NOT EXISTS lore(guild INTEGER,key TEXT COLLATE NOCASE,text TEXT,secret INTEGER DEFAULT 0,PRIMARY KEY(guild,key));
         CREATE TABLE IF NOT EXISTS character_memory(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTEGER,character TEXT COLLATE NOCASE,kind TEXT,text TEXT,importance INTEGER DEFAULT 50,created TEXT);
         CREATE TABLE IF NOT EXISTS character_knowledge(guild INTEGER,character TEXT COLLATE NOCASE,key TEXT COLLATE NOCASE,text TEXT,source TEXT DEFAULT 'campaign',PRIMARY KEY(guild,character,key));
+        CREATE TABLE IF NOT EXISTS factions(guild INTEGER,name TEXT COLLATE NOCASE,description TEXT DEFAULT '',reputation INTEGER DEFAULT 0,PRIMARY KEY(guild,name));
+        CREATE TABLE IF NOT EXISTS effects(guild INTEGER,character TEXT COLLATE NOCASE,name TEXT COLLATE NOCASE,rounds INTEGER DEFAULT 0,concentration INTEGER DEFAULT 0,PRIMARY KEY(guild,character,name));
+        CREATE TABLE IF NOT EXISTS campaign_settings(guild INTEGER PRIMARY KEY,reset_locked INTEGER DEFAULT 1,theme TEXT DEFAULT 'fantasy');
         """)
     def _campaign(self,g):
         if not self.db.execute("SELECT 1 FROM campaigns WHERE guild=?",(g,)).fetchone(): raise ValueError("Run /campaign_setup first.")
@@ -113,9 +116,35 @@ class Store:
     def character_context(self,g,character):
         return {"sheet":self.sheet(g,character),"memories":self.memories(g,character,12),"knowledge":self.knowledge(g,character),"relationships":self.relationships(g,character)}
 
+    def faction_set(self,g,name,description="",reputation=0):
+        self._campaign(g); reputation=max(-100,min(100,int(reputation)))
+        self.db.execute("INSERT INTO factions(guild,name,description,reputation) VALUES(?,?,?,?) ON CONFLICT(guild,name) DO UPDATE SET description=excluded.description,reputation=excluded.reputation",(g,name,description,reputation)); self.db.commit()
+    def factions(self,g):
+        return [dict(x) for x in self.db.execute("SELECT name,description,reputation FROM factions WHERE guild=? ORDER BY name",(g,))]
+    def effect_set(self,g,character,name,rounds=0,concentration=False):
+        self.character(g,character)
+        self.db.execute("INSERT INTO effects(guild,character,name,rounds,concentration) VALUES(?,?,?,?,?) ON CONFLICT(guild,character,name) DO UPDATE SET rounds=excluded.rounds,concentration=excluded.concentration",(g,character,name,max(0,int(rounds)),int(concentration))); self.db.commit()
+    def effects(self,g,character):
+        return [dict(x) for x in self.db.execute("SELECT name,rounds,concentration FROM effects WHERE guild=? AND character=? ORDER BY name",(g,character))]
+    def effect_remove(self,g,character,name):
+        self.db.execute("DELETE FROM effects WHERE guild=? AND character=? AND name=?",(g,character,name)); self.db.commit()
+    def death_save(self,g,character,success):
+        s=self.sheet(g,character); key="death_save_successes" if success else "death_save_failures"; n=min(3,int(s.get(key,0))+1)
+        return self.patch_sheet(g,character,{key:n})
+    def reset_death_saves(self,g,character):
+        return self.patch_sheet(g,character,{"death_save_successes":0,"death_save_failures":0})
+    def settings(self,g):
+        self._campaign(g); self.db.execute("INSERT OR IGNORE INTO campaign_settings(guild) VALUES(?)",(g,)); self.db.commit()
+        return dict(self.db.execute("SELECT * FROM campaign_settings WHERE guild=?",(g,)).fetchone())
+    def set_reset_lock(self,g,locked):
+        self.settings(g); self.db.execute("UPDATE campaign_settings SET reset_locked=? WHERE guild=?",(int(locked),g)); self.db.commit()
+    def set_theme(self,g,theme):
+        self.settings(g); self.db.execute("UPDATE campaign_settings SET theme=? WHERE guild=?",(theme,g)); self.db.commit()
+
     def campaign_reset(self,g):
         self._campaign(g)
-        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state","character_memory","character_knowledge"):
+        if self.settings(g)["reset_locked"]: raise ValueError("Campaign reset is locked. Use /reset_unlock first.")
+        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state","character_memory","character_knowledge","factions","effects"):
             self.db.execute("DELETE FROM "+table+" WHERE guild=?",(g,))
         self.db.execute("UPDATE campaigns SET scene='' WHERE guild=?",(g,)); self.db.commit()
 
