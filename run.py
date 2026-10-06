@@ -13,7 +13,7 @@ from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 from dungeon_assist.onboarding import invite_url, vtt_url
 
 load_dotenv()
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -74,6 +74,27 @@ async def tabletop_rotate(i):
         await i.response.send_message("Only a GM/server manager can rotate the tabletop link.",ephemeral=True); return
     token=store.rotate_vtt_token(gid(i)); url=vtt_url(gid(i),token)
     await i.response.send_message("🔐 **New private tabletop link**\n"+(url or "Set PUBLIC_VTT_URL first.")+"\n\nThe previous link no longer works.",ephemeral=True)
+
+@bot.tree.command(name="vtt_scene", description="GM: create or activate a browser VTT scene")
+async def vtt_scene(i, name:str, background:str="", width:int=20, height:int=14):
+    if not is_gm(i): await i.response.send_message("GM only.",ephemeral=True); return
+    store.vtt_scene_set(gid(i),name,background,width,height,48,True)
+    await i.response.send_message("🗺️ Active scene: **"+name+"**\nOpen /tabletop to view it.")
+
+@bot.tree.command(name="vtt_wall", description="GM: add a wall to the active VTT scene")
+async def vtt_wall(i, x1:float,y1:float,x2:float,y2:float):
+    if not is_gm(i): await i.response.send_message("GM only.",ephemeral=True); return
+    store.vtt_wall_add(gid(i),x1,y1,x2,y2); await i.response.send_message("🧱 Wall added.")
+
+@bot.tree.command(name="vtt_door", description="GM: add a door to the active VTT scene")
+async def vtt_door(i, x1:float,y1:float,x2:float,y2:float):
+    if not is_gm(i): await i.response.send_message("GM only.",ephemeral=True); return
+    store.vtt_wall_add(gid(i),x1,y1,x2,y2,"door","closed"); await i.response.send_message("🚪 Door added.")
+
+@bot.tree.command(name="vtt_light", description="GM: add a light source to the active VTT scene")
+async def vtt_light(i, x:float,y:float,radius:float=4):
+    if not is_gm(i): await i.response.send_message("GM only.",ephemeral=True); return
+    store.vtt_light_add(gid(i),x,y,radius,max(1,radius/2)); await i.response.send_message("🔥 Light added.")
 
 @bot.tree.command(name="dndhelp", description="Show every Dungeon Buddy command")
 async def dndhelp(i):
