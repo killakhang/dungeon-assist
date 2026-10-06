@@ -1,7 +1,11 @@
 """Wopples World v0.1 authoritative multiplayer server."""
 import asyncio, json, os, time, subprocess, sys
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+from dungeon_assist.store import Store
+from dungeon_assist.ai import ask_ai
+from dungeon_assist.pdf_sheet import build_character_pdf
 import uvicorn
 from wopples_world.combat import CombatWorld
 
@@ -12,6 +16,8 @@ players={}
 clients=set()
 lock=asyncio.Lock()
 bot_process=None
+store=Store(os.getenv("DUNGEON_DB", "dungeon_assist.db"))
+WEB_GUILD=int(os.getenv("WEB_GUILD_ID", "1"))
 
 @app.on_event("startup")
 async def start_discord_bot():
@@ -32,6 +38,55 @@ async def stop_discord_bot():
         except subprocess.TimeoutExpired:
             bot_process.kill()
 
+
+
+class ChatRequest(BaseModel):
+    character: str = "Wopples"
+    message: str
+
+class CharacterPatch(BaseModel):
+    personality: str | None = None
+
+@app.get("/")
+async def home():
+    return FileResponse("wopples_world/app.html")
+
+def _web_sheet(name):
+    try:
+        return store.sheet(WEB_GUILD,name)
+    except Exception:
+        store.setup_campaign(WEB_GUILD,"Wopples World")
+        store.create_character(WEB_GUILD,0,name,"Paladin",10)
+        store.save_sheet(WEB_GUILD,name,{"ruleset":"D&D 2024","species":"Human","background":"Soldier","alignment":"Chaotic Good","strength":15,"dexterity":12,"constitution":14,"intelligence":10,"wisdom":11,"charisma":14,"personality":["Chaotic","cartoonish","curious"],"equipment":[],"features_traits":[]})
+        return store.sheet(WEB_GUILD,name)
+
+@app.get("/api/character/{name}")
+async def web_character(name:str):
+    return _web_sheet(name)
+
+@app.patch("/api/character/{name}")
+async def web_character_patch(name:str, patch:CharacterPatch):
+    _web_sheet(name)
+    updates={}
+    if patch.personality is not None: updates["personality"]=[x.strip() for x in patch.personality.split(",") if x.strip()]
+    return store.patch_sheet(WEB_GUILD,name,updates)
+
+@app.post("/api/chat")
+async def web_chat(req:ChatRequest):
+    s=_web_sheet(req.character)
+    try: ctx=store.character_context(WEB_GUILD,req.character)
+    except Exception: ctx={"sheet":s}
+    try:
+        reply=await asyncio.to_thread(ask_ai,"Character context: "+str(ctx)+"\nUser says: "+req.message+"\nReply only as the character. Be conversational and concise.",req.character,"browser character proxy")
+        return {"reply":reply}
+    except Exception as e:
+        raise HTTPException(status_code=503,detail=str(e))
+
+@app.get("/api/character/{name}/pdf")
+async def web_character_pdf(name:str):
+    pdf=build_character_pdf(_web_sheet(name))
+    safe="".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name) or "character"
+    return StreamingResponse(pdf,media_type="application/pdf",headers={"Content-Disposition":f'inline; filename="{safe}_character_sheet.pdf"'})
 
 @app.get("/world")
 async def world():
