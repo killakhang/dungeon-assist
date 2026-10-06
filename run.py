@@ -5,10 +5,10 @@ from discord import app_commands
 from dotenv import load_dotenv
 from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
-from dungeon_assist.ai import ask_ai, ai_enabled, load_seed
+from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 
 load_dotenv()
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -37,7 +37,8 @@ async def tree_error(i, error):
 @bot.tree.command(name="dndhelp", description="Show every Dungeon Assist command")
 async def dndhelp(i):
     items=[
-        ("SYSTEM","/version","Show the running Dungeon Assist version."),
+        ("SYSTEM","/ai","Tell Dungeon Assist what you want in normal language."),
+        ("","/version","Show the running Dungeon Assist version."),
         ("CHARACTERS","/character_create","Create a character."),
         ("","/character_show","Show a character sheet."),
         ("","/character_edit","Edit a sheet field."),
@@ -93,6 +94,64 @@ async def dndhelp(i):
     e.set_footer(text="Every command is printed vertically.")
     await i.response.send_message(embed=e)
 
+@bot.tree.command(name="ai", description="Tell Dungeon Assist what you want in normal language")
+@app_commands.describe(message="Example: Wopples takes 7 damage")
+async def ai_command(i, message: str):
+    g=gid(i)
+    await i.response.defer()
+    try:
+        context={
+            "characters":[x["name"] for x in store.db.execute("SELECT name FROM characters WHERE guild=?",(g,))],
+            "combat":store.combat_state(g),
+            "initiative":store.initiative(g)
+        }
+        p=plan_action(message,context)
+        a=p.get("action","chat")
+        name=p.get("character")
+        if a=="damage":
+            r=store.set_hp_delta(g,name,-abs(int(p.get("amount") or 0))); out="💥 **"+r["name"]+"**\nHP "+str(r["hp"])+"/"+str(r["max_hp"])
+        elif a=="heal":
+            r=store.set_hp_delta(g,name,abs(int(p.get("amount") or 0))); out="💚 **"+r["name"]+"**\nHP "+str(r["hp"])+"/"+str(r["max_hp"])
+        elif a=="temp_hp":
+            r=store.set_temp_hp(g,name,int(p.get("amount") or 0)); out="🛡️ **"+name+"**\nTemporary HP "+str(r.get("temp_hp",0))
+        elif a=="set_hp":
+            r=store.set_hp(g,name,int(p.get("amount") or 0)); out="**"+r["name"]+"**\nHP "+str(r["hp"])+"/"+str(r["max_hp"])
+        elif a in {"condition_add","condition_remove"}:
+            r=store.condition(g,name,str(p.get("text") or p.get("value") or ""),a=="condition_remove"); out="**"+r["name"]+"** conditions\n"+(r["conditions"] or "none")
+        elif a=="sheet_edit":
+            field=str(p.get("field") or "").lower()
+            allowed={"species","background","alignment","strength","dexterity","constitution","intelligence","wisdom","charisma","armor_class","speed","personality","ideals","bonds","flaws","equipment","backstory","portrait_url","ruleset","age","height","weight","eyes","skin","hair","appearance","spellcasting_class","spellcasting_ability"}
+            if field not in allowed: raise ValueError("AI requested an unsupported sheet field.")
+            r=store.patch_sheet(g,name,{field:p.get("value")}); out="✏️ **"+name+"**\n"+field.replace("_"," ").title()+" → "+str(p.get("value"))
+        elif a=="initiative_add":
+            store.initiative_add(g,name,int(p.get("initiative") or p.get("value") or 0)); out="⚔️ Added **"+name+"** to initiative."
+        elif a=="combat_begin":
+            store.combat_begin(g); out="⚔️ Combat started."
+        elif a=="combat_next":
+            r=store.combat_next(g); out="⚔️ **Round "+str(r["round"])+"**\nTurn: **"+r["combatant"]["name"]+"**"
+        elif a=="combat_prev":
+            r=store.combat_next(g,True); out="⚔️ **Round "+str(r["round"])+"**\nTurn: **"+r["combatant"]["name"]+"**"
+        elif a=="combat_status":
+            s=store.combat_state(g); rows=store.initiative(g); out="⚔️ **Round "+str(s["round"])+"**\n"+"\n".join(("➡️ " if s["active"] and n==s["turn"] else "")+x["name"] for n,x in enumerate(rows))
+        elif a=="combat_end":
+            store.combat_end(g); out="Combat ended."
+        elif a=="scene":
+            store.scene(g,str(p.get("text") or p.get("value") or "")); out="🎭 Scene updated."
+        elif a=="note":
+            store.event(g,"note",str(p.get("text") or message),i.user.id); out="📝 Campaign event recorded."
+        elif a=="quest_add":
+            store.quest_add(g,str(p.get("text") or p.get("value") or "")); out="📜 Quest added."
+        elif a=="lore_add":
+            key=str(p.get("target") or p.get("field") or "Lore"); store.lore_set(g,key,str(p.get("text") or p.get("value") or ""),bool(p.get("secret",False))); out="📚 Lore saved: **"+key+"**"
+        elif a=="relationship":
+            r=store.relationship_set(g,name,str(p.get("target")),str(p.get("metric")),int(p.get("value") or 0)); out="❤️ **"+name+" → "+str(p.get("target"))+"**\n"+str(p.get("metric")).title()+" "+str(r[str(p.get("metric"))])
+        else:
+            out=ask_ai(message,purpose="Dungeon Assist conversational interface")
+        if a!="chat": store.event(g,"ai_action",message+" => "+a,i.user.id)
+        await i.followup.send(out[:1900])
+    except Exception as e:
+        await i.followup.send("I couldn't safely do that.\n"+str(e))
+
 @bot.tree.command(name="version", description="Show the running Dungeon Assist version")
 async def version(i):
     e=discord.Embed(title="Dungeon Assist", description="**Version**\n"+VERSION+"\n**AI**\n"+("READY" if ai_enabled() else "NOT CONFIGURED"))
@@ -116,13 +175,25 @@ async def character_create(i, name: str, character_class: str = "Unchosen", spec
     max_hp = max(1, max_hp)
     store.create_character(gid(i), i.user.id, name, character_class, max_hp)
     store.save_sheet(gid(i), name, {
+        "ruleset": "2014_5e",
         "species": species,
         "background": mech.get("background", "Unchosen"),
         "alignment": mech.get("alignment", "Unchosen"),
+        "experience_points": 0,
+        "inspiration": False,
         "strength": None, "dexterity": None, "constitution": None,
         "intelligence": None, "wisdom": None, "charisma": None,
+        "armor_class": None, "initiative_bonus": None, "speed": None,
+        "temp_hp": 0, "hit_dice": "", "death_save_successes": 0, "death_save_failures": 0,
+        "save_proficiencies": [], "skill_proficiencies": [], "passive_perception": None,
+        "attacks": [], "equipment": [], "currency": {"cp":0,"sp":0,"ep":0,"gp":0,"pp":0},
+        "proficiencies_languages": [], "features_traits": [],
         "personality": [], "ideals": [], "bonds": [], "flaws": [],
-        "equipment": [], "backstory": ""
+        "age": "", "height": "", "weight": "", "eyes": "", "skin": "", "hair": "",
+        "appearance": "", "backstory": "", "allies_organizations": [], "treasure": [],
+        "spellcasting_class": "", "spellcasting_ability": "", "spell_save_dc": None,
+        "spell_attack_bonus": None, "cantrips": [], "spells": {}, "spell_slots": {},
+        "portrait_url": ""
     })
     lines = [
         "**CHARACTER CREATED**",
