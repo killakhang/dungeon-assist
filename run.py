@@ -11,9 +11,10 @@ from dungeon_assist.character2024 import DEFAULT_2024, next_question, choices_fo
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 from dungeon_assist.onboarding import invite_url, vtt_url
+from dungeon_assist.pdf_sheet import build_character_pdf
 
 load_dotenv()
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -103,6 +104,7 @@ async def dndhelp(i):
         ("","/version","Show the running Dungeon Buddy version."),
         ("CHARACTERS","/character_create","Create a character."),
         ("","/character_show","Show a character sheet."),
+        ("","/character_pdf","Generate a printable PDF character sheet."),
         ("","/character_edit","Edit a sheet field."),
         ("","/character_fill","AI suggests missing sheet information."),
         ("","/character_explain","Explain the sheet for a beginner."),
@@ -412,6 +414,19 @@ async def character_show(i, name: str):
         "**Backstory:** " + val("backstory"),
     ]
     await i.response.send_message("\n".join(lines))
+
+@bot.tree.command(name="character_pdf", description="Generate a printable PDF character sheet")
+@app_commands.describe(name="Character name")
+async def character_pdf(i, name: str):
+    await i.response.defer()
+    try:
+        s=store.sheet(gid(i),name)
+        pdf=build_character_pdf(s)
+        safe="".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in s["name"]).strip("_") or "character"
+        file=discord.File(pdf,filename=safe+"_character_sheet.pdf")
+        await i.followup.send("📄 **"+s["name"]+" - printable character sheet**",file=file)
+    except Exception as e:
+        await i.followup.send("Could not create the PDF: "+str(e))
 
 @bot.tree.command(name="character_fill", description="AI helps fill missing character-sheet fields")
 @app_commands.describe(name="Character name", request="What you want help with")
