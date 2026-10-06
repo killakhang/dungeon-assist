@@ -29,12 +29,16 @@ async def index():
     return FileResponse("board/index.html")
 
 @app.get("/api/{guild}/state")
-async def get_state(guild:int):
+async def get_state(guild:int, token:str):
+    if token != store.guild_access(guild)["vtt_token"]: raise HTTPException(403,"Invalid VTT access token")
     try: return state(guild)
     except Exception as e: raise HTTPException(400,str(e))
 
 @app.websocket("/ws/{guild}")
 async def socket(ws:WebSocket,guild:int):
+    token=ws.query_params.get("token","")
+    if token != store.guild_access(guild)["vtt_token"]:
+        await ws.close(code=1008,reason="Invalid VTT access token"); return
     await ws.accept(); clients.setdefault(guild,set()).add(ws)
     await ws.send_text(json.dumps(state(guild)))
     try:
