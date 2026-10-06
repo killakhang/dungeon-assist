@@ -92,7 +92,7 @@ async def vtt_door(i, x1:float,y1:float,x2:float,y2:float):
     store.vtt_wall_add(gid(i),x1,y1,x2,y2,"door","closed"); await i.response.send_message("🚪 Door added.")
 
 @bot.tree.command(name="vtt_light", description="GM: add a light source to the active VTT scene")
-async def vtt_light(i, x:float,y:float,radius:float=4):
+async def vtt_light(i, x:float,y:float,radius:float=4.0):
     if not is_gm(i): await i.response.send_message("GM only.",ephemeral=True); return
     store.vtt_light_add(gid(i),x,y,radius,max(1,radius/2)); await i.response.send_message("🔥 Light added.")
 
