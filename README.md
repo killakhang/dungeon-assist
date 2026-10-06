@@ -25,6 +25,25 @@ Discord-first D&D assistant and DM simulation platform.
 7. Invite the bot with application commands and only the channel permissions you want.
 8. `python run.py`
 
+## Free AI with OpenRouter
+
+Dungeon Assist uses OpenRouter for optional AI features. The default model route is `openrouter/free`, so the bot can use models currently available through OpenRouter's free router without requiring an OpenAI API key.
+
+Create an OpenRouter API key and configure:
+
+```bash
+export OPENROUTER_API_KEY="your-key-here"
+export OPENROUTER_MODEL="openrouter/free"
+```
+
+Never commit a real API key to GitHub.
+
+AI is intentionally optional. Core game systems such as dice, combat, HP, character sheets, initiative, quests, campaign state, and the local database do not require an AI request. AI requests are reserved for features such as conversational assistance, roleplay/proxy responses, creative help, and natural-language action planning.
+
+OpenRouter controls free-model availability, daily request limits, and rate limits, and those limits can change. Check OpenRouter's current free-model/pricing documentation for the current allowance rather than relying on a hard-coded quota in Dungeon Assist.
+
+The project continues to use the `openai` Python package as an OpenAI-compatible client library, but the configured AI endpoint is OpenRouter (`https://openrouter.ai/api/v1`), not the OpenAI API.
+
 ## Privacy
 Dungeon Assist never bypasses Discord permissions. Scanning only reads channels visible to the bot. Proxy control belongs to the character owner. Future voice transcription must be opt-in and visible.
 
