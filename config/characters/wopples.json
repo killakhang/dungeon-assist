@@ -1,0 +1,37 @@
+{
+  "name": "Wopples",
+  "mechanical_seed": {
+    "species": "Human",
+    "class": "Paladin",
+    "level": 1,
+    "background": "Soldier",
+    "alignment": "Chaotic Good"
+  },
+  "roleplay_personas": {
+    "canonical": {
+      "label": "Canonical Wopples",
+      "alignment": "Chaotic Good"
+    },
+    "chaotic_goblin": {
+      "label": "Chaotic Goblin Wopples",
+      "alignment": "Chaotic Neutral",
+      "traits": [
+        "Looney Tunes energy",
+        "unpredictable",
+        "comedic chaos"
+      ],
+      "note": "Alternate roleplay persona; does not overwrite canonical mechanics."
+    }
+  },
+  "campaign_state_defaults": {
+    "memories": [],
+    "relationships": {},
+    "discoveries": [],
+    "reputation": {},
+    "proxy_mode": "off"
+  },
+  "notes": [
+    "Saved Level-5 sheet is historical reference only.",
+    "Unknown Level-1 mechanics remain unset until confirmed."
+  ]
+}
