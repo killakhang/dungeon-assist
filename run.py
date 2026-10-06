@@ -470,7 +470,8 @@ async def world(i, question: str):
 async def proxy(i, character: str, message: str):
     s=store.sheet(gid(i),character); await i.response.defer()
     try:
-        ctx=store.character_context(gid(i),character)\n        answer=ask_ai("Character context: "+str(ctx)+"\nSituation/message: "+message+"\nReply only as this character. Do not use campaign knowledge the character has not learned.",character,"character proxy")
+        ctx = store.character_context(gid(i), character)
+        answer=ask_ai("Character context: "+str(ctx)+"\nSituation/message: "+message+"\nReply only as this character. Do not use campaign knowledge the character has not learned.",character,"character proxy")
         e=discord.Embed(description=answer[:4000]); e.set_author(name=character)
         if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
         await i.followup.send(embed=e)
