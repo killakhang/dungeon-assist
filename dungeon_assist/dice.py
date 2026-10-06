@@ -12,3 +12,15 @@ def roll_expression(expression):
     total=sum(rolls)+mod
     sign=f"{mod:+d}" if mod else ""
     return {"rolls":rolls,"modifier":mod,"total":total,"detail":f"{rolls}{sign}"}
+
+def d20(modifier=0, advantage=False, disadvantage=False):
+    if advantage and disadvantage:
+        advantage=disadvantage=False
+    rolls=[random.randint(1,20) for _ in range(2 if advantage or disadvantage else 1)]
+    natural=max(rolls) if advantage else min(rolls) if disadvantage else rolls[0]
+    return {"rolls":rolls,"natural":natural,"modifier":modifier,"total":natural+modifier,
+            "mode":"advantage" if advantage else "disadvantage" if disadvantage else "normal"}
+
+def ability_modifier(score):
+    if score is None: raise ValueError("That ability score is not filled in.")
+    return (int(score)-10)//2
