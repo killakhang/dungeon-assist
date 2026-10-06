@@ -327,7 +327,8 @@ async def character_ai(i, name: str, message: str):
     s = store.sheet(gid(i), name)
     await i.response.defer()
     try:
-        ctx=store.character_context(gid(i),name)\n        prompt = "Character context including sheet, memories, knowledge, and relationships:\n" + str(ctx) + "\nUser message:\n" + message + "\nRespond in character when appropriate. Never let the character know campaign facts absent from their supplied knowledge/memories unless the user just told them in this message. Preserve established persona and alignment."
+        ctx = store.character_context(gid(i), name)
+        prompt = "Character context including sheet, memories, knowledge, and relationships:\n" + str(ctx) + "\nUser message:\n" + message + "\nRespond in character when appropriate. Never let the character know campaign facts absent from their supplied knowledge/memories unless the user just told them in this message. Preserve established persona and alignment."
         answer = ask_ai(prompt, name, "character roleplay and D&D assistant")
         store.event(gid(i), "character_ai", name + ": " + message, i.user.id)
         await i.followup.send(answer[:1900])
