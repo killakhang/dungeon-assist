@@ -8,7 +8,7 @@ from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 
 load_dotenv()
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -44,7 +44,12 @@ async def dndhelp(i):
         ("","/character_edit","Edit a sheet field."),
         ("","/character_fill","AI suggests missing sheet information."),
         ("","/character_explain","Explain the sheet for a beginner."),
-        ("","/character_ai","Use the character AI."),
+        ("","/character_ai","Use the character AI with memory and knowledge."),
+        ("","/character_build","AI walks you through missing character fields."),
+        ("","/remember","Give a character a persistent memory."),
+        ("","/memories","Show what a character remembers."),
+        ("","/knowledge_add","Teach a character campaign knowledge."),
+        ("","/knows","Show what a character knows."),
         ("","/portrait","Set a character portrait."),
         ("","/proxy","Roleplay as a character."),
         ("ROLLS","/roll","Roll dice."),
@@ -255,6 +260,39 @@ async def character_fill(i, name: str, request: str = "Find missing fields and s
     except Exception as e:
         await i.followup.send("AI unavailable: " + str(e))
 
+@bot.tree.command(name="character_build", description="AI walks you through completing a character")
+async def character_build(i, name: str, answer: str=""):
+    s=store.sheet(gid(i),name)
+    fields=["species","class","background","alignment","strength","dexterity","constitution","intelligence","wisdom","charisma","armor_class","speed","personality","ideals","bonds","flaws","equipment","backstory"]
+    missing=[f for f in fields if s.get(f) in (None,"",[],"Unchosen")]
+    await i.response.defer()
+    if not missing:
+        await i.followup.send("✅ **"+name+"**\nCore character fields are filled.\nUse /character_show to review."); return
+    prompt="You are a beginner D&D character creation wizard. Current sheet: "+str(s)+"\nMissing fields: "+str(missing)+"\nUser's latest answer: "+answer+"\nAsk exactly ONE simple question that helps choose the next missing field. Explain unfamiliar choices briefly. Do not claim anything was saved."
+    await i.followup.send(ask_ai(prompt,name,"one-question-at-a-time character builder")[:1900])
+
+@bot.tree.command(name="remember", description="Give a character a persistent memory")
+async def remember(i, character: str, memory: str, importance: int=50):
+    store.memory_add(gid(i),character,memory,"memory",importance)
+    await i.response.send_message("🧠 **"+character+" remembers**\n"+memory)
+
+@bot.tree.command(name="memories", description="Show a character's persistent memories")
+async def memories(i, character: str):
+    rows=store.memories(gid(i),character,20)
+    text="\n".join("🧠 "+x["text"]+" • "+str(x["importance"]) for x in rows) or "No stored memories."
+    await i.response.send_message("**"+character+" • MEMORIES**\n"+text[:1800])
+
+@bot.tree.command(name="knowledge_add", description="Teach a character a campaign fact")
+async def knowledge_add(i, character: str, topic: str, fact: str):
+    store.knowledge_set(gid(i),character,topic,fact,"campaign")
+    await i.response.send_message("📚 **"+character+" learned**\n"+topic+"\n"+fact)
+
+@bot.tree.command(name="knows", description="Show what a character knows")
+async def knows(i, character: str):
+    rows=store.knowledge(gid(i),character)
+    text="\n".join("📖 **"+x["key"]+"**\n"+x["text"] for x in rows) or "No character-specific knowledge stored."
+    await i.response.send_message(("**"+character+" • KNOWLEDGE**\n"+text)[:1900])
+
 @bot.tree.command(name="character_explain", description="Explain a character sheet for a complete beginner")
 async def character_explain(i, name: str):
     s = store.sheet(gid(i), name)
@@ -271,7 +309,7 @@ async def character_ai(i, name: str, message: str):
     s = store.sheet(gid(i), name)
     await i.response.defer()
     try:
-        prompt = "Current character sheet:\n" + str(s) + "\nUser message:\n" + message + "\nRespond in character when appropriate. Preserve established persona and alignment."
+        ctx=store.character_context(gid(i),name)\n        prompt = "Character context including sheet, memories, knowledge, and relationships:\n" + str(ctx) + "\nUser message:\n" + message + "\nRespond in character when appropriate. Never let the character know campaign facts absent from their supplied knowledge/memories unless the user just told them in this message. Preserve established persona and alignment."
         answer = ask_ai(prompt, name, "character roleplay and D&D assistant")
         store.event(gid(i), "character_ai", name + ": " + message, i.user.id)
         await i.followup.send(answer[:1900])
@@ -413,7 +451,7 @@ async def world(i, question: str):
 async def proxy(i, character: str, message: str):
     s=store.sheet(gid(i),character); await i.response.defer()
     try:
-        answer=ask_ai("Sheet: "+str(s)+"\nSituation/message: "+message+"\nReply only as this character.",character,"character proxy")
+        ctx=store.character_context(gid(i),character)\n        answer=ask_ai("Character context: "+str(ctx)+"\nSituation/message: "+message+"\nReply only as this character. Do not use campaign knowledge the character has not learned.",character,"character proxy")
         e=discord.Embed(description=answer[:4000]); e.set_author(name=character)
         if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
         await i.followup.send(embed=e)
