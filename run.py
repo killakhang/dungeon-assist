@@ -6,12 +6,13 @@ from dotenv import load_dotenv
 from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.board import render_board
+from dungeon_assist.actions import resource_set, resource_change, apply_rest, add_attack, spell_slot_set, spend_spell_slot
 from dungeon_assist.character2024 import DEFAULT_2024, next_question, choices_for, help_for
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 
 load_dotenv()
-VERSION = "0.9.2"
+VERSION = "0.10.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -515,6 +516,67 @@ async def attack(i, character: str, target: str, attack_bonus: int, target_ac: i
             if m: expr=str(int(m.group(1) or 1)*2)+"d"+m.group(2)+(m.group(3) or "")
         d=roll_expression(expr); e.add_field(name="Damage",value=d["detail"]+" = **"+str(d["total"])+"**",inline=False)
     await i.response.send_message(embed=e)
+
+@bot.tree.command(name="attack_add", description="Save an attack on a character sheet")
+async def attack_add(i, character: str, name: str, bonus: int, damage: str, damage_type: str=""):
+    s=store.sheet(gid(i),character)
+    store.patch_sheet(gid(i),character,{"attacks":add_attack(s,name,bonus,damage,damage_type)})
+    await i.response.send_message("Saved attack **"+name+"** for **"+character+"**.")
+
+@bot.tree.command(name="attacks", description="Show a character's saved attacks")
+async def attacks_cmd(i, character: str):
+    rows=store.sheet(gid(i),character).get("attacks",[])
+    text="\n".join("**"+str(x.get("name"))+"** | "+str(x.get("bonus"))+" to hit | "+str(x.get("damage"))+" "+str(x.get("damage_type","")) for x in rows)
+    await i.response.send_message(("**"+character+" - ATTACKS**\n"+(text or "No saved attacks."))[:1900])
+
+@bot.tree.command(name="resource_set", description="Create or edit a character resource counter")
+async def resource_set_cmd(i, character: str, name: str, current: int, maximum: int, reset: str="long"):
+    if reset not in {"short","long","none"}:
+        await i.response.send_message("Reset must be short, long, or none.",ephemeral=True); return
+    s=store.sheet(gid(i),character)
+    store.patch_sheet(gid(i),character,{"resources":resource_set(s,name,current,maximum,reset)})
+    await i.response.send_message("**"+character+"**\n"+name+" "+str(current)+"/"+str(maximum)+"\nReset: "+reset)
+
+@bot.tree.command(name="resource", description="Spend or restore a character resource")
+async def resource_cmd(i, character: str, name: str, change: int):
+    s=store.sheet(gid(i),character)
+    resources=resource_change(s,name,change)
+    store.patch_sheet(gid(i),character,{"resources":resources})
+    r=resources[name]
+    await i.response.send_message("**"+character+"**\n"+name+" "+str(r["current"])+"/"+str(r["max"]))
+
+@bot.tree.command(name="resources", description="Show character resource counters")
+async def resources_cmd(i, character: str):
+    rows=store.sheet(gid(i),character).get("resources",{})
+    text="\n".join("**"+k+"** "+str(v.get("current",0))+"/"+str(v.get("max",0))+" | "+str(v.get("reset","none"))+" rest" for k,v in rows.items())
+    await i.response.send_message(("**"+character+" - RESOURCES**\n"+(text or "No custom resources."))[:1900])
+
+@bot.tree.command(name="rest", description="Take a short or long rest and refresh tracked resources")
+async def rest(i, character: str, kind: str):
+    kind=kind.lower()
+    s=store.sheet(gid(i),character)
+    updated=apply_rest(s,kind)
+    store.save_sheet(gid(i),character,{k:v for k,v in updated.items() if k not in {"guild","name","owner","class","level","hp","max_hp","conditions"}})
+    if kind=="long":
+        store.set_hp(gid(i),character,s["max_hp"])
+    await i.response.send_message("**"+character+"** completed a **"+kind+" rest**. Tracked "+kind+"-rest resources were refreshed.")
+
+@bot.tree.command(name="spell_slot_set", description="Set tracked spell slots for a character")
+async def spell_slot_set_cmd(i, character: str, level: int, current: int, maximum: int):
+    s=store.sheet(gid(i),character)
+    store.patch_sheet(gid(i),character,{"spell_slots":spell_slot_set(s,level,current,maximum)})
+    await i.response.send_message("**"+character+"**\nLevel "+str(level)+" slots: "+str(current)+"/"+str(maximum))
+
+@bot.tree.command(name="cast", description="Track casting a spell and optionally spend a spell slot")
+async def cast(i, character: str, spell: str, level: int=0):
+    s=store.sheet(gid(i),character)
+    if level>0:
+        slots=spend_spell_slot(s,level)
+        store.patch_sheet(gid(i),character,{"spell_slots":slots})
+        left=slots[str(level)]["current"]
+        await i.response.send_message("✨ **"+character+" casts "+spell+"**\nLevel "+str(level)+" slot spent.\nSlots remaining: "+str(left))
+    else:
+        await i.response.send_message("✨ **"+character+" casts "+spell+"**\nNo spell slot spent.")
 
 @bot.tree.command(name="damage", description="Damage a tracked character")
 async def damage(i, character: str, amount: int):
