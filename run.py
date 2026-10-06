@@ -14,13 +14,16 @@ from dungeon_assist.onboarding import invite_url, vtt_url
 from dungeon_assist.pdf_sheet import build_character_pdf
 
 load_dotenv()
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
 
 store = Store(os.getenv("DUNGEON_DB", "dungeon_assist.db"))
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+proxy_channels = {}
 
 def gid(i):
     if i.guild_id is None:
@@ -118,7 +121,9 @@ async def dndhelp(i):
         ("","/knowledge_add","Teach a character campaign knowledge."),
         ("","/knows","Show what a character knows."),
         ("","/portrait","Set a character portrait."),
-        ("","/proxy","Roleplay as a character."),
+        ("","/proxy","Roleplay one message as a character."),
+        ("","/proxy_start","Start continuous character proxy mode in this channel."),
+        ("","/proxy_stop","Stop continuous proxy mode in this channel."),
         ("ROLLS","/roll","Roll dice."),
         ("","/check","Roll a character skill check."),
         ("","/save","Roll a saving throw."),
@@ -727,6 +732,41 @@ async def proxy(i, character: str, message: str):
         if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
         await i.followup.send(embed=e)
     except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="proxy_start", description="Start continuous character proxy mode in this channel")
+@app_commands.describe(character="Character who should respond to normal messages")
+async def proxy_start(i, character: str):
+    store.sheet(gid(i), character)
+    proxy_channels[(gid(i), i.channel_id)] = character
+    await i.response.send_message("🎭 **Proxy mode ON — "+character+"**\nTalk normally in this channel and "+character+" will answer.\nUse **/proxy_stop** when you're done.")
+
+@bot.tree.command(name="proxy_stop", description="Stop continuous character proxy mode in this channel")
+async def proxy_stop(i):
+    key=(gid(i), i.channel_id)
+    character=proxy_channels.pop(key, None)
+    await i.response.send_message("🎭 Proxy mode OFF"+(" for **"+character+"**." if character else "."))
+
+@bot.event
+async def on_message(message):
+    if message.author.bot or not message.guild:
+        return
+    character=proxy_channels.get((message.guild.id, message.channel.id))
+    if character and message.content.strip() and not message.content.startswith("!"):
+        async with message.channel.typing():
+            try:
+                s=store.sheet(message.guild.id, character)
+                ctx=store.character_context(message.guild.id, character)
+                prompt=("Character context: "+str(ctx)+"\nConversation message from "+message.author.display_name+": "+message.content+
+                        "\nReply only as this character. Stay consistent with personality, memories, relationships, alignment, and learned knowledge. "+
+                        "Do not claim knowledge the character has not learned. Keep normal conversation concise unless detail is useful.")
+                answer=ask_ai(prompt, character, "continuous character proxy")
+                e=discord.Embed(description=answer[:4000])
+                e.set_author(name=character)
+                if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
+                await message.reply(embed=e, mention_author=False)
+            except Exception as e:
+                await message.reply("Proxy error: "+str(e), mention_author=False)
+    await bot.process_commands(message)
 
 @bot.tree.command(name="creature_add", description="Add a creature to the 2D battle board")
 async def creature_add(i, name: str, hp: int=7, ac: int=12, x: int=5, y: int=3, kind: str="monster"):
