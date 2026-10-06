@@ -107,3 +107,18 @@ Normal players can use commands after installation without being server administ
 - `/snapshot`
 
 Campaign state persists in SQLite (`dungeon_assist.db`). The next layers are sessions/event bus, inventory/resources, knowledge/secrets, homebrew/rules configuration, DM approval/rollback, relationships/factions, AI proxy/memory, then voice/maps.
+
+
+## Ruleset
+
+Dungeon Assist uses the **2024 revised D&D 5e rules** as its canonical/default ruleset.
+
+Character creation, sheet education, leveling, classes, backgrounds, Origin Feats, Weapon Mastery, spells, and rules explanations should follow the 2024 rules and must not silently mix in 2014 rules.
+
+Planned beginner sheet tools:
+- guided 2024 character creation, one step at a time
+- explanations for ability scores/modifiers, proficiency, AC, saves, skills, attacks, spellcasting, equipment, and class resources
+- `/sheet_help` for field-by-field education
+- `/sheet_check` for missing or inconsistent character fields
+- `/character_sheet` for a readable finished sheet
+- `/character_levelup` for guided 2024 leveling
