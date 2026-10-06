@@ -33,59 +33,64 @@ async def tree_error(i, error):
     else:
         await i.response.send_message("Warning: " + msg, ephemeral=True)
 
-@bot.tree.command(name="dndhelp", description="Show Dungeon Assist commands")
+@bot.tree.command(name="dndhelp", description="Show every Dungeon Assist command")
 async def dndhelp(i):
-    lines = [
-        "**DUNGEON ASSIST v0.3**",
-        "**CHARACTER**",
-        "/character_create",
-        "Create a beginner-friendly Level 1 character.",
-        "/character_show",
-        "Show the character sheet.",
-        "/character_fill",
-        "AI explains missing fields and suggests choices.",
-        "/character_explain",
-        "Explain the sheet like you have never played D&D.",
-        "/character_ai",
-        "Talk to the AI using that character and persona.",
-        "**CAMPAIGN**",
-        "/campaign_setup",
-        "Create or select the campaign.",
-        "/scene",
-        "Set the current scene.",
-        "/note",
-        "Record a campaign event.",
-        "/recap",
-        "Show recent events.",
-        "/snapshot",
-        "Save a recovery snapshot.",
-        "**PLAY**",
-        "/roll",
-        "Roll dice.",
-        "/hp",
-        "Set current HP.",
-        "/condition",
-        "Add or remove a condition.",
-        "/initiative_add",
-        "Add a combatant.",
-        "/initiative",
-        "Show turn order.",
-        "/initiative_clear",
-        "Clear turn order.",
-        "/quest_add",
-        "Add a quest.",
-        "/quests",
-        "Show active quests.",
-        "**AI**",
-        ("READY" if ai_enabled() else "NOT CONFIGURED"),
-        "**EXAMPLES**",
-        "/character_create name:Wopples",
-        "/character_fill name:Wopples",
-        "/character_explain name:Wopples",
-        "/character_ai name:Wopples message:What do you do?",
-        "/roll expression:1d20+5",
+    items=[
+        ("CHARACTERS","/character_create","Create a character."),
+        ("","/character_show","Show a character sheet."),
+        ("","/character_edit","Edit a sheet field."),
+        ("","/character_fill","AI suggests missing sheet information."),
+        ("","/character_explain","Explain the sheet for a beginner."),
+        ("","/character_ai","Use the character AI."),
+        ("","/portrait","Set a character portrait."),
+        ("","/proxy","Roleplay as a character."),
+        ("ROLLS","/roll","Roll dice."),
+        ("","/check","Roll a character skill check."),
+        ("","/save","Roll a saving throw."),
+        ("","/attack","Roll an attack against AC and damage."),
+        ("COMBAT","/hp","Set HP."),
+        ("","/damage","Apply damage."),
+        ("","/heal","Restore HP."),
+        ("","/temp_hp","Set temporary HP."),
+        ("","/condition","Add or remove a condition."),
+        ("","/initiative_add","Add initiative."),
+        ("","/initiative","Show initiative."),
+        ("","/initiative_clear","Clear initiative."),
+        ("","/combat_begin","Start combat."),
+        ("","/combat_next","Advance one turn."),
+        ("","/combat_prev","Go back one turn."),
+        ("","/combat_status","Show round and active turn."),
+        ("","/combat_end","End combat."),
+        ("WORLD","/scene","Set the current scene."),
+        ("","/quest_add","Add a quest."),
+        ("","/quests","Show quests."),
+        ("","/lore_add","Save campaign lore."),
+        ("","/lore","Read campaign lore."),
+        ("","/rule","Ask a D&D rules question."),
+        ("","/world","Ask/develop campaign world information."),
+        ("","/relationship","Set affinity, trust, fear, or resentment."),
+        ("","/relationships","Show relationship state."),
+        ("CAMPAIGN","/campaign_setup","Create/select campaign."),
+        ("","/note","Record a campaign event."),
+        ("","/recap","Show recent campaign events."),
+        ("","/snapshot","Create a recovery snapshot."),
+        ("","/reset_campaign","Reset campaign state with RESET confirmation."),
     ]
-    await i.response.send_message("\n".join(lines))
+    e=discord.Embed(title="🏰 Dungeon Assist v0.4",description="AI: "+("READY" if ai_enabled() else "NOT CONFIGURED"))
+    text=[]
+    for section,cmd,desc in items:
+        if section: text.append("**"+section+"**")
+        text.append("**"+cmd+"**")
+        text.append(desc)
+    chunks=[]; current=""
+    for line in text:
+        if len(current)+len(line)+1>1000: chunks.append(current); current=""
+        current+=line+"\n"
+    if current: chunks.append(current)
+    for n,ch in enumerate(chunks): e.add_field(name="Commands" if n==0 else "Continued",value=ch,inline=False)
+    e.set_footer(text="Every command is printed vertically.")
+    await i.response.send_message(embed=e)
+
 @bot.tree.command(name="campaign_setup", description="Create or select this server campaign")
 async def campaign_setup(i, name: str):
     store.setup_campaign(gid(i), name)
