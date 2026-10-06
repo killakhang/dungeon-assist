@@ -8,7 +8,7 @@ from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 
 load_dotenv()
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -57,6 +57,11 @@ async def dndhelp(i):
         ("","/save","Roll a saving throw."),
         ("","/attack","Roll an attack against AC and damage."),
         ("COMBAT","/hp","Set HP."),
+        ("","/effect_add","Track an effect or concentration."),
+        ("","/effects","Show active effects."),
+        ("","/effect_remove","Remove an effect."),
+        ("","/death_save","Record a death-save result."),
+        ("","/death_save_reset","Reset death saves."),
         ("","/damage","Apply damage."),
         ("","/heal","Restore HP."),
         ("","/temp_hp","Set temporary HP."),
@@ -70,6 +75,8 @@ async def dndhelp(i):
         ("","/combat_status","Show round and active turn."),
         ("","/combat_end","End combat."),
         ("WORLD","/scene","Set the current scene."),
+        ("","/faction","Create or update a faction."),
+        ("","/factions","Show campaign factions."),
         ("","/quest_add","Add a quest."),
         ("","/quests","Show quests."),
         ("","/lore_add","Save campaign lore."),
@@ -79,6 +86,9 @@ async def dndhelp(i):
         ("","/relationship","Set affinity, trust, fear, or resentment."),
         ("","/relationships","Show relationship state."),
         ("CAMPAIGN","/campaign_setup","Create/select campaign."),
+        ("","/theme","Choose the presentation theme."),
+        ("","/reset_lock","Protect campaign reset."),
+        ("","/reset_unlock","Allow campaign reset."),
         ("","/note","Record a campaign event."),
         ("","/recap","Show recent campaign events."),
         ("","/snapshot","Create a recovery snapshot."),
@@ -456,6 +466,51 @@ async def proxy(i, character: str, message: str):
         if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
         await i.followup.send(embed=e)
     except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="effect_add", description="Track a character effect")
+async def effect_add(i, character: str, effect: str, rounds: int=0, concentration: bool=False):
+    store.effect_set(gid(i),character,effect,rounds,concentration)
+    await i.response.send_message("✨ **"+character+"**\n"+effect+"\nRounds "+str(rounds)+"\nConcentration "+("Yes" if concentration else "No"))
+
+@bot.tree.command(name="effects", description="Show active character effects")
+async def effects(i, character: str):
+    rows=store.effects(gid(i),character)
+    await i.response.send_message(("**"+character+" • EFFECTS**\n" + ("\n".join("✨ "+x["name"]+" • "+str(x["rounds"])+" rounds"+(" • concentration" if x["concentration"] else "") for x in rows) or "None."))[:1900])
+
+@bot.tree.command(name="effect_remove", description="Remove a character effect")
+async def effect_remove(i, character: str, effect: str):
+    store.effect_remove(gid(i),character,effect); await i.response.send_message("Effect removed.\n**"+character+"**\n"+effect)
+
+@bot.tree.command(name="death_save", description="Record a death-save success or failure")
+async def death_save(i, character: str, success: bool):
+    s=store.death_save(gid(i),character,success)
+    await i.response.send_message("☠️ **"+character+" • DEATH SAVES**\nSuccesses "+str(s.get("death_save_successes",0))+"/3\nFailures "+str(s.get("death_save_failures",0))+"/3")
+
+@bot.tree.command(name="death_save_reset", description="Reset a character's death saves")
+async def death_save_reset(i, character: str):
+    store.reset_death_saves(gid(i),character); await i.response.send_message("Death saves reset.\n**"+character+"**")
+
+@bot.tree.command(name="faction", description="Create or update a campaign faction")
+async def faction(i, name: str, description: str="", reputation: int=0):
+    store.faction_set(gid(i),name,description,reputation); await i.response.send_message("🏳️ **"+name+"**\nReputation "+str(max(-100,min(100,reputation)))+"\n"+description)
+
+@bot.tree.command(name="factions", description="Show campaign factions")
+async def factions(i):
+    rows=store.factions(gid(i)); await i.response.send_message(("**FACTIONS**\n"+("\n".join("🏳️ **"+x["name"]+"**\nReputation "+str(x["reputation"])+"\n"+x["description"] for x in rows) or "None."))[:1900])
+
+@bot.tree.command(name="theme", description="Choose Dungeon Assist presentation theme")
+@app_commands.choices(name=[app_commands.Choice(name=x,value=x) for x in ["cute","fantasy","dark","goofy","minimal"]])
+async def theme(i, name: app_commands.Choice[str]):
+    store.set_theme(gid(i),name.value); await i.response.send_message("🎨 Theme\n**"+name.value.title()+"**")
+
+@bot.tree.command(name="reset_lock", description="Lock campaign reset")
+async def reset_lock(i):
+    store.set_reset_lock(gid(i),True); await i.response.send_message("🔒 Campaign reset locked.")
+
+@bot.tree.command(name="reset_unlock", description="Unlock campaign reset")
+async def reset_unlock(i, confirmation: str):
+    if confirmation!="UNLOCK": await i.response.send_message("Type exactly UNLOCK to allow reset.",ephemeral=True); return
+    store.set_reset_lock(gid(i),False); await i.response.send_message("🔓 Campaign reset unlocked.\nUse /reset_campaign confirmation:RESET when you are certain.")
 
 @bot.tree.command(name="reset_campaign", description="DANGER: reset campaign state after confirmation")
 async def reset_campaign(i, confirmation: str):
