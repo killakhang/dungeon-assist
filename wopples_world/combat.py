@@ -5,12 +5,12 @@ import math, random, time
 @dataclass
 class Fighter:
     id:str; name:str; x:float; y:float; hp:int=100; max_hp:int=100
-    stamina:float=100; down:bool=False; invuln_until:float=0; attack_until:float=0
+    stamina:float=100; down:bool=False; invuln_until:float=0; attack_until:float=0; heal_charges:int=3; healing_until:float=0; deaths:int=0
 
 @dataclass
 class Monster:
     id:str; name:str; x:float; y:float; hp:int=80; max_hp:int=80
-    damage:int=15; speed:float=1.2; boss:bool=False; phase:int=1
+    damage:int=15; speed:float=1.2; boss:bool=False; phase:int=1; windup_until:float=0; attack_ready:bool=False
 
 class CombatWorld:
     def __init__(self):
@@ -38,15 +38,29 @@ class CombatWorld:
         l=math.hypot(dx,dy) or 1;p.x+=dx/l*1.35;p.y+=dy/l*1.35;return True
     def attack(self,pid):
         p=self.players[pid]; now=time.time()
-        if p.down or now<p.attack_until:return
+        if p.down or now<p.attack_until or now<p.healing_until:return
         p.attack_until=now+.38
         targets=[m for m in self.monsters.values() if m.hp>0 and math.hypot(m.x-p.x,m.y-p.y)<1.35]
         if targets:
             m=min(targets,key=lambda z:math.hypot(z.x-p.x,z.y-p.y));m.hp=max(0,m.hp-22)
             self.emit("hit",f"{p.name} bonks {m.name}!",target=m.id,damage=22)
             if not m.hp:self.emit("ko",f"{m.name} defeated!")
+    def heal(self,pid):
+        p=self.players[pid]; now=time.time()
+        if p.down or p.heal_charges<=0 or now<p.healing_until:return False
+        p.heal_charges-=1; p.healing_until=now+1.15
+        self.emit("heal_start",f"{p.name} starts healing...")
+        return True
+    def revive(self,pid,target_id):
+        p=self.players[pid]; t=self.players.get(target_id)
+        if not t or not t.down or p.down or math.hypot(p.x-t.x,p.y-t.y)>1.4:return False
+        t.down=False;t.hp=max(1,t.max_hp//3);t.invuln_until=time.time()+.8
+        self.emit("revive",f"{p.name} revives {t.name}!");return True
     def tick(self,dt):
         now=time.time()
+        for p in self.players.values():
+            if p.healing_until and now>=p.healing_until:
+                p.healing_until=0;p.hp=min(p.max_hp,p.hp+45);self.emit("heal",f"{p.name} heals.")
         alive=[p for p in self.players.values() if not p.down]
         for m in self.monsters.values():
             if m.hp<=0 or not alive:continue
@@ -55,8 +69,12 @@ class CombatWorld:
             p=min(alive,key=lambda q:math.hypot(q.x-m.x,q.y-m.y));d=math.hypot(p.x-m.x,p.y-m.y)
             if d>1:
                 m.x+=(p.x-m.x)/d*m.speed*dt;m.y+=(p.y-m.y)/d*m.speed*dt
-            elif random.random()<dt*.8 and now>=p.invuln_until:
-                p.hp=max(0,p.hp-m.damage);self.emit("hurt",f"{m.name} hits {p.name}!",target=p.id,damage=m.damage)
-                if p.hp==0:p.down=True;self.emit("down",f"{p.name} is down!")
+            elif d<=1 and m.windup_until==0:
+                m.windup_until=now+(.75 if not m.boss else max(.38,.72-.10*(m.phase-1))); self.emit("telegraph",f"{m.name} winds up!",target=p.id)
+            elif m.windup_until and now>=m.windup_until:
+                m.windup_until=0
+                if math.hypot(p.x-m.x,p.y-m.y)<=1.35 and now>=p.invuln_until:
+                    p.hp=max(0,p.hp-m.damage);self.emit("hurt",f"{m.name} hits {p.name}!",target=p.id,damage=m.damage)
+                    if p.hp==0:p.down=True;p.deaths+=1;self.emit("down",f"{p.name} is down!")
     def snapshot(self):
         return {"players":[asdict(x) for x in self.players.values()],"monsters":[asdict(x) for x in self.monsters.values()],"events":self.events,"won":self.started and bool(self.monsters) and all(m.hp<=0 for m in self.monsters.values())}
