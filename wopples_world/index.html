@@ -3,11 +3,24 @@
 <style>
 html,body{margin:0;background:#171722;color:#fff;font-family:monospace;height:100%;overflow:hidden}#game{display:block;margin:auto;max-width:100vw;max-height:100vh;image-rendering:pixelated;background:#7fba73}#hud{position:fixed;left:12px;top:12px;background:#15131bdd;padding:10px;border:2px solid #f0c66d;border-radius:9px;min-width:270px}.bar{height:10px;background:#382b35;margin:4px 0;border:1px solid #eee}.fill{height:100%;background:#d45b62}.stam{background:#e8ca62}.small{opacity:.82}#msg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#15131be8;border:2px solid #f0c66d;padding:10px 16px;border-radius:9px;text-align:center}button{font:inherit;margin:4px;padding:5px 8px}
 </style></head><body><canvas id="game" width="960" height="640"></canvas>
-<div id="hud"><b>WOPPLES WORLD — COMBAT ROOM</b><br><span id="status">Connecting...</span><div>HP <span id="hp">100</span><div class="bar"><div id="hpbar" class="fill"></div></div></div><div>STAMINA<div class="bar"><div id="stbar" class="fill stam"></div></div></div><span class="small">WASD move • J attack • SPACE dodge • H heal</span><br><button id="blob">Spawn Blob Squad</button><button id="boss">Mushroom King</button></div><div id="msg">Cute does not mean easy.</div>
+<div id="hud"><b>WOPPLES WORLD — COMBAT ROOM</b><br><span id="status">Connecting...</span><div>HP <span id="hp">100</span><div class="bar"><div id="hpbar" class="fill"></div></div></div><div>STAMINA<div class="bar"><div id="stbar" class="fill stam"></div></div></div><span class="small">WASD move • J attack • SPACE dodge • H heal<br>Controller: left stick/D-pad • A attack • B dodge • Y heal</span><br><button id="blob">Spawn Blob Squad</button><button id="boss">Mushroom King</button></div><div id="msg">Cute does not mean easy.</div>
 <script>
 const C=document.querySelector("#game"),g=C.getContext("2d"),statusEl=document.querySelector("#status"),msg=document.querySelector("#msg"),hp=document.querySelector("#hp"),hpbar=document.querySelector("#hpbar"),stbar=document.querySelector("#stbar");
 const TILE=40,W=24,H=16,name=new URLSearchParams(location.search).get("name")||("Wopples"+Math.floor(Math.random()*99));
 let me={id:null,name,x:8,y:8,hp:100,stamina:100},players=[],monsters=[],events=[],keys={},ws,last=performance.now(),lastSend=0,lastEvent=0,face={x:1,y:0},slash=0,dodgeFlash=0;
+let padPrev={},activePad="";
+function pressed(p,i){return !!p?.buttons?.[i]?.pressed}
+function edge(p,i){let v=pressed(p,i),old=!!padPrev[i];padPrev[i]=v;return v&&!old}
+function gamepad(){
+  let pads=navigator.getGamepads?navigator.getGamepads():[],p=[...pads].find(Boolean);if(!p)return {dx:0,dy:0};
+  if(activePad!==p.id){activePad=p.id;statusEl.textContent="Controller ready • "+name}
+  let ax=Math.abs(p.axes[0]||0)>.18?p.axes[0]:0, ay=Math.abs(p.axes[1]||0)>.18?p.axes[1]:0;
+  let dx=ax+(pressed(p,15)?1:0)-(pressed(p,14)?1:0),dy=ay+(pressed(p,13)?1:0)-(pressed(p,12)?1:0);
+  if(edge(p,0)){send({action:"attack",x:me.x,y:me.y});slash=.14}
+  if(edge(p,1)){send({action:"dodge",dx:face.x,dy:face.y,x:me.x,y:me.y});dodgeFlash=.32}
+  if(edge(p,3))send({action:"heal",x:me.x,y:me.y});
+  return {dx:Math.max(-1,Math.min(1,dx)),dy:Math.max(-1,Math.min(1,dy))}
+}
 function send(o){if(ws?.readyState===1)ws.send(JSON.stringify(o))}
 function connect(){let p=location.protocol==="https:"?"wss":"ws";ws=new WebSocket(p+"://"+location.host+"/world/ws?name="+encodeURIComponent(name));ws.onopen=()=>statusEl.textContent="Shared combat • "+name;ws.onmessage=e=>{let m=JSON.parse(e.data);if(m.type!=="state")return;players=Object.values(m.combat?.players||[]);monsters=m.combat?.monsters||[];events=m.combat?.events||[];let mine=players.find(q=>q.name===name);if(mine){me={...me,...mine};}let ev=events.at(-1);if(ev&&ev.at!==lastEvent){lastEvent=ev.at;msg.textContent=ev.text}if(m.combat?.won)msg.textContent="Wopples win. Obviously."};ws.onclose=()=>{statusEl.textContent="Server offline";setTimeout(connect,2500)}}
 function circle(x,y,r,col){g.fillStyle=col;g.beginPath();g.arc(x*TILE,y*TILE,r,0,Math.PI*2);g.fill()}
@@ -16,6 +29,6 @@ function monster(m){let X=m.x*TILE,Y=m.y*TILE;if(m.boss){circle(m.x,m.y,32,"#9b4
 function draw(){g.fillStyle="#789c70";g.fillRect(0,0,C.width,C.height);for(let y=0;y<H;y++)for(let x=0;x<W;x++){g.fillStyle=(x+y)%2?"#789c70":"#7fa576";g.fillRect(x*TILE,y*TILE,TILE,TILE)}for(let i=0;i<35;i++){let X=(i*173)%940,Y=(i*97)%620;g.fillStyle=i%3?"#d8d28b":"#e8a9bb";g.fillRect(X,Y,3,3)}g.strokeStyle="#5c4b68";g.lineWidth=10;g.strokeRect(8,8,C.width-16,C.height-16);monsters.filter(m=>m.hp>0).forEach(monster);players.filter(p=>p.id!==me.id).forEach(p=>goblin(p));goblin(me,true);requestAnimationFrame(draw)}
 addEventListener("keydown",e=>{let k=e.key.toLowerCase();keys[k]=1;if(k==="j"){send({action:"attack",x:me.x,y:me.y});slash=.14}if(k===" "){e.preventDefault();send({action:"dodge",dx:face.x,dy:face.y,x:me.x,y:me.y});dodgeFlash=.32}if(k==="h")send({action:"heal",x:me.x,y:me.y})});addEventListener("keyup",e=>keys[e.key.toLowerCase()]=0);
 document.querySelector("#blob").onclick=()=>send({action:"spawn_squad",count:5});document.querySelector("#boss").onclick=()=>send({action:"spawn_boss"});
-function tick(t){let dt=Math.min(.05,(t-last)/1000);last=t;let dx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0),dy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0),l=Math.hypot(dx,dy)||1;if(dx||dy){face={x:dx/l,y:dy/l};me.x=Math.max(.5,Math.min(23.5,me.x+face.x*4.2*dt));me.y=Math.max(.5,Math.min(15.5,me.y+face.y*4.2*dt))}slash=Math.max(0,slash-dt);dodgeFlash=Math.max(0,dodgeFlash-dt);hp.textContent=Math.ceil(me.hp??100);hpbar.style.width=(me.hp??100)+"%";stbar.style.width=(me.stamina??100)+"%";if(ws?.readyState===1&&t-lastSend>60){send({action:"move",x:me.x,y:me.y,dx,dy});lastSend=t}requestAnimationFrame(tick)}
+function tick(t){let dt=Math.min(.05,(t-last)/1000);last=t;let pad=gamepad(),kdx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0),kdy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0),dx=kdx||pad.dx,dy=kdy||pad.dy,l=Math.hypot(dx,dy)||1;if(dx||dy){face={x:dx/l,y:dy/l};me.x=Math.max(.5,Math.min(23.5,me.x+face.x*4.2*dt));me.y=Math.max(.5,Math.min(15.5,me.y+face.y*4.2*dt))}slash=Math.max(0,slash-dt);dodgeFlash=Math.max(0,dodgeFlash-dt);hp.textContent=Math.ceil(me.hp??100);hpbar.style.width=(me.hp??100)+"%";stbar.style.width=(me.stamina??100)+"%";if(ws?.readyState===1&&t-lastSend>60){send({action:"move",x:me.x,y:me.y,dx,dy});lastSend=t}requestAnimationFrame(tick)}
 connect();draw();requestAnimationFrame(tick);
 </script></body></html>
