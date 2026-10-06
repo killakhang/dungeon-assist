@@ -2,7 +2,7 @@
 
 Discord-first D&D assistant and DM simulation platform.
 
-## v0.1
+## v0.2 playable core
 - `/dndhelp`
 - `/campaign_setup`
 - `/character_create`
@@ -80,3 +80,30 @@ Dungeon Assist ready as ...
 ```
 
 This foreground method is useful for the first test. A persistent background service should be configured separately before relying on the bot to survive terminal disconnects or EC2 reboots.
+
+
+## Discord installation and permissions
+
+Dungeon Assist is intended for **Guild Install** (server installation), not User Install. Discord requires a server owner or member with permission to manage/install apps to authorize the bot once. Dungeon Assist cannot and should not bypass that authorization.
+
+The bot does **not** require Administrator. For the current v0.2 slash-command feature set, grant only:
+- View Channels
+- Send Messages
+- Read Message History (needed later for explicitly requested campaign scanning)
+- Use Application Commands
+
+Normal players can use commands after installation without being server administrators, subject to the server/channel command permissions configured by the server's admins.
+
+## v0.2 implemented commands
+
+- `/campaign_setup`
+- `/character_create`, `/character_show`
+- `/hp`, `/condition`
+- `/roll`
+- `/initiative_add`, `/initiative`, `/initiative_clear`
+- `/quest_add`, `/quests`
+- `/scene`
+- `/note`, `/recap`
+- `/snapshot`
+
+Campaign state persists in SQLite (`dungeon_assist.db`). The next layers are sessions/event bus, inventory/resources, knowledge/secrets, homebrew/rules configuration, DM approval/rollback, relationships/factions, AI proxy/memory, then voice/maps.
