@@ -20,6 +20,7 @@ class Store:
         CREATE TABLE IF NOT EXISTS factions(guild INTEGER,name TEXT COLLATE NOCASE,description TEXT DEFAULT '',reputation INTEGER DEFAULT 0,PRIMARY KEY(guild,name));
         CREATE TABLE IF NOT EXISTS effects(guild INTEGER,character TEXT COLLATE NOCASE,name TEXT COLLATE NOCASE,rounds INTEGER DEFAULT 0,concentration INTEGER DEFAULT 0,PRIMARY KEY(guild,character,name));
         CREATE TABLE IF NOT EXISTS campaign_settings(guild INTEGER PRIMARY KEY,reset_locked INTEGER DEFAULT 1,theme TEXT DEFAULT 'fantasy');
+        CREATE TABLE IF NOT EXISTS creatures(guild INTEGER,name TEXT COLLATE NOCASE,kind TEXT DEFAULT 'monster',hp INTEGER DEFAULT 1,max_hp INTEGER DEFAULT 1,ac INTEGER DEFAULT 10,x INTEGER DEFAULT 0,y INTEGER DEFAULT 0,icon TEXT DEFAULT '👹',notes TEXT DEFAULT '',PRIMARY KEY(guild,name));
         """)
     def _campaign(self,g):
         if not self.db.execute("SELECT 1 FROM campaigns WHERE guild=?",(g,)).fetchone(): raise ValueError("Run /campaign_setup first.")
@@ -116,6 +117,20 @@ class Store:
     def character_context(self,g,character):
         return {"sheet":self.sheet(g,character),"memories":self.memories(g,character,12),"knowledge":self.knowledge(g,character),"relationships":self.relationships(g,character)}
 
+    def creature_set(self,g,name,hp=1,ac=10,x=0,y=0,kind="monster",icon="👹",notes=""):
+        self._campaign(g); hp=max(0,int(hp)); ac=max(0,int(ac))
+        self.db.execute("INSERT INTO creatures(guild,name,kind,hp,max_hp,ac,x,y,icon,notes) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(guild,name) DO UPDATE SET kind=excluded.kind,hp=excluded.hp,max_hp=excluded.max_hp,ac=excluded.ac,x=excluded.x,y=excluded.y,icon=excluded.icon,notes=excluded.notes",(g,name,kind,hp,hp,ac,int(x),int(y),icon,notes)); self.db.commit()
+    def creatures(self,g):
+        return [dict(x) for x in self.db.execute("SELECT name,kind,hp,max_hp,ac,x,y,icon,notes FROM creatures WHERE guild=? ORDER BY name",(g,))]
+    def creature_move(self,g,name,x,y):
+        self.db.execute("UPDATE creatures SET x=?,y=? WHERE guild=? AND name=?",(int(x),int(y),g,name)); self.db.commit()
+    def creature_hp(self,g,name,delta):
+        row=self.db.execute("SELECT hp,max_hp FROM creatures WHERE guild=? AND name=?",(g,name)).fetchone()
+        if not row: raise ValueError("Creature not found.")
+        hp=max(0,min(row["max_hp"],row["hp"]+int(delta))); self.db.execute("UPDATE creatures SET hp=? WHERE guild=? AND name=?",(hp,g,name)); self.db.commit(); return hp
+    def creature_remove(self,g,name):
+        self.db.execute("DELETE FROM creatures WHERE guild=? AND name=?",(g,name)); self.db.commit()
+
     def faction_set(self,g,name,description="",reputation=0):
         self._campaign(g); reputation=max(-100,min(100,int(reputation)))
         self.db.execute("INSERT INTO factions(guild,name,description,reputation) VALUES(?,?,?,?) ON CONFLICT(guild,name) DO UPDATE SET description=excluded.description,reputation=excluded.reputation",(g,name,description,reputation)); self.db.commit()
@@ -144,7 +159,7 @@ class Store:
     def campaign_reset(self,g):
         self._campaign(g)
         if self.settings(g)["reset_locked"]: raise ValueError("Campaign reset is locked. Use /reset_unlock first.")
-        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state","character_memory","character_knowledge","factions","effects"):
+        for table in ("characters","character_sheets","initiative","quests","events","relationships","lore","combat_state","character_memory","character_knowledge","factions","effects","creatures"):
             self.db.execute("DELETE FROM "+table+" WHERE guild=?",(g,))
         self.db.execute("UPDATE campaigns SET scene='' WHERE guild=?",(g,)); self.db.commit()
 
