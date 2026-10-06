@@ -10,9 +10,10 @@ from dungeon_assist.actions import resource_set, resource_change, apply_rest, ad
 from dungeon_assist.character2024 import DEFAULT_2024, next_question, choices_for, help_for
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
+from dungeon_assist.onboarding import invite_url, vtt_url
 
 load_dotenv()
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -37,6 +38,42 @@ async def tree_error(i, error):
         await i.followup.send("Warning: " + msg, ephemeral=True)
     else:
         await i.response.send_message("Warning: " + msg, ephemeral=True)
+
+def is_gm(i):
+    if i.user.guild_permissions.manage_guild or i.user.guild_permissions.administrator:
+        return True
+    role=store.guild_access(gid(i)).get("gm_role")
+    return bool(role and any(r.id==role for r in getattr(i.user,"roles",[])))
+
+@bot.tree.command(name="setup", description="Set up Wopples Dungeon Buddy for this Discord server")
+@app_commands.describe(campaign="Campaign name", gm_role="Optional role allowed to manage the campaign")
+async def setup(i, campaign: str, gm_role: discord.Role=None):
+    if not (i.user.guild_permissions.manage_guild or i.user.guild_permissions.administrator):
+        await i.response.send_message("You need Manage Server permission to set up Dungeon Buddy.",ephemeral=True); return
+    store.setup_campaign(gid(i),campaign); store.guild_access(gid(i))
+    if gm_role: store.set_gm_role(gid(i),gm_role.id)
+    await i.response.send_message("🏰 **Wopples' Dungeon Buddy is ready.**\nCampaign: **"+campaign+"**\nGM role: **"+(gm_role.name if gm_role else "Server managers")+"**\n\nUse **/dndhelp** for commands.\nUse **/tabletop** for your private browser VTT link.")
+
+@bot.tree.command(name="invite", description="Get the official Wopples Dungeon Buddy server invite link")
+async def invite(i):
+    url=invite_url()
+    if not url:
+        await i.response.send_message("The bot owner still needs to set DISCORD_CLIENT_ID before public invites are enabled.",ephemeral=True); return
+    await i.response.send_message("🏰 **Add Wopples' Dungeon Buddy to another server**\n"+url,ephemeral=True)
+
+@bot.tree.command(name="tabletop", description="Get this server's private browser tabletop link")
+async def tabletop(i):
+    access=store.guild_access(gid(i)); url=vtt_url(gid(i),access["vtt_token"])
+    if not url:
+        await i.response.send_message("The bot owner still needs to set PUBLIC_VTT_URL.",ephemeral=True); return
+    await i.response.send_message("🗺️ **Private tabletop link**\n"+url+"\n\nDon't post this link publicly. A GM can rotate it with **/tabletop_rotate**.",ephemeral=True)
+
+@bot.tree.command(name="tabletop_rotate", description="Invalidate the old tabletop link and create a new one")
+async def tabletop_rotate(i):
+    if not is_gm(i):
+        await i.response.send_message("Only a GM/server manager can rotate the tabletop link.",ephemeral=True); return
+    token=store.rotate_vtt_token(gid(i)); url=vtt_url(gid(i),token)
+    await i.response.send_message("🔐 **New private tabletop link**\n"+(url or "Set PUBLIC_VTT_URL first.")+"\n\nThe previous link no longer works.",ephemeral=True)
 
 @bot.tree.command(name="dndhelp", description="Show every Dungeon Buddy command")
 async def dndhelp(i):
