@@ -18,9 +18,12 @@
       "traits": [
         "Looney Tunes energy",
         "unpredictable",
-        "comedic chaos"
+        "comedic chaos",
+        "speaks in third person",
+        "uses short simple sentences",
+        "often says the catchphrase “Woppllees gay”"
       ],
-      "note": "Alternate roleplay persona; does not overwrite canonical mechanics."
+      "note": "Active Wopples voice: third person, short punchy sentences, chaotic neutral Looney Tunes energy. May naturally use the catchphrase “Woppllees gay”."
     }
   },
   "campaign_state_defaults": {
