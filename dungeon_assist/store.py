@@ -21,6 +21,10 @@ class Store:
         CREATE TABLE IF NOT EXISTS effects(guild INTEGER,character TEXT COLLATE NOCASE,name TEXT COLLATE NOCASE,rounds INTEGER DEFAULT 0,concentration INTEGER DEFAULT 0,PRIMARY KEY(guild,character,name));
         CREATE TABLE IF NOT EXISTS campaign_settings(guild INTEGER PRIMARY KEY,reset_locked INTEGER DEFAULT 1,theme TEXT DEFAULT 'fantasy');
         CREATE TABLE IF NOT EXISTS creatures(guild INTEGER,name TEXT COLLATE NOCASE,kind TEXT DEFAULT 'monster',hp INTEGER DEFAULT 1,max_hp INTEGER DEFAULT 1,ac INTEGER DEFAULT 10,x INTEGER DEFAULT 0,y INTEGER DEFAULT 0,icon TEXT DEFAULT '👹',notes TEXT DEFAULT '',PRIMARY KEY(guild,name));\n        CREATE TABLE IF NOT EXISTS guild_access(guild INTEGER PRIMARY KEY,gm_role INTEGER,vtt_token TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS vtt_scenes(guild INTEGER,name TEXT COLLATE NOCASE,active INTEGER DEFAULT 0,background TEXT DEFAULT '',width INTEGER DEFAULT 20,height INTEGER DEFAULT 14,grid INTEGER DEFAULT 48,darkness REAL DEFAULT 0,PRIMARY KEY(guild,name));
+        CREATE TABLE IF NOT EXISTS vtt_walls(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTEGER,scene TEXT COLLATE NOCASE,x1 REAL,y1 REAL,x2 REAL,y2 REAL,kind TEXT DEFAULT 'wall',door_state TEXT DEFAULT 'closed');
+        CREATE TABLE IF NOT EXISTS vtt_lights(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTEGER,scene TEXT COLLATE NOCASE,x REAL,y REAL,radius REAL DEFAULT 4,bright REAL DEFAULT 2,enabled INTEGER DEFAULT 1);
+        CREATE TABLE IF NOT EXISTS vtt_fog(guild INTEGER,scene TEXT COLLATE NOCASE,user INTEGER DEFAULT 0,data TEXT DEFAULT '[]',PRIMARY KEY(guild,scene,user));
         """)
     def guild_access(self,g):
         r=self.db.execute("SELECT * FROM guild_access WHERE guild=?",(g,)).fetchone()
@@ -37,6 +41,29 @@ class Store:
         import secrets
         token=secrets.token_urlsafe(32); self.guild_access(g)
         self.db.execute("UPDATE guild_access SET vtt_token=? WHERE guild=?",(token,g)); self.db.commit(); return token
+
+    def vtt_scene_set(self,g,name,background="",width=20,height=14,grid=48,active=True):
+        self._campaign(g)
+        if active: self.db.execute("UPDATE vtt_scenes SET active=0 WHERE guild=?",(g,))
+        self.db.execute("INSERT INTO vtt_scenes(guild,name,active,background,width,height,grid) VALUES(?,?,?,?,?,?,?) ON CONFLICT(guild,name) DO UPDATE SET active=excluded.active,background=excluded.background,width=excluded.width,height=excluded.height,grid=excluded.grid",(g,name,int(active),background,int(width),int(height),int(grid))); self.db.commit()
+    def vtt_scene(self,g):
+        r=self.db.execute("SELECT * FROM vtt_scenes WHERE guild=? AND active=1 LIMIT 1",(g,)).fetchone()
+        if not r:
+            self.vtt_scene_set(g,"Default",active=True); r=self.db.execute("SELECT * FROM vtt_scenes WHERE guild=? AND active=1 LIMIT 1",(g,)).fetchone()
+        return dict(r)
+    def vtt_scenes(self,g): return [dict(x) for x in self.db.execute("SELECT * FROM vtt_scenes WHERE guild=? ORDER BY name",(g,))]
+    def vtt_wall_add(self,g,x1,y1,x2,y2,kind="wall",door_state="closed"):
+        s=self.vtt_scene(g)["name"]; self.db.execute("INSERT INTO vtt_walls(guild,scene,x1,y1,x2,y2,kind,door_state) VALUES(?,?,?,?,?,?,?,?)",(g,s,float(x1),float(y1),float(x2),float(y2),kind,door_state)); self.db.commit()
+    def vtt_walls(self,g):
+        s=self.vtt_scene(g)["name"]; return [dict(x) for x in self.db.execute("SELECT * FROM vtt_walls WHERE guild=? AND scene=?",(g,s))]
+    def vtt_light_add(self,g,x,y,radius=4,bright=2):
+        s=self.vtt_scene(g)["name"]; self.db.execute("INSERT INTO vtt_lights(guild,scene,x,y,radius,bright) VALUES(?,?,?,?,?,?)",(g,s,float(x),float(y),float(radius),float(bright))); self.db.commit()
+    def vtt_lights(self,g):
+        s=self.vtt_scene(g)["name"]; return [dict(x) for x in self.db.execute("SELECT * FROM vtt_lights WHERE guild=? AND scene=? AND enabled=1",(g,s))]
+    def vtt_door_toggle(self,g,wall_id):
+        r=self.db.execute("SELECT door_state FROM vtt_walls WHERE guild=? AND id=?",(g,int(wall_id))).fetchone()
+        if not r: raise ValueError("Door not found.")
+        state="open" if r["door_state"]!="open" else "closed"; self.db.execute("UPDATE vtt_walls SET door_state=? WHERE guild=? AND id=?",(state,g,int(wall_id))); self.db.commit(); return state
 
     def _campaign(self,g):
         if not self.db.execute("SELECT 1 FROM campaigns WHERE guild=?",(g,)).fetchone(): raise ValueError("Run /campaign_setup first.")
