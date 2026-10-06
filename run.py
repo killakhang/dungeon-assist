@@ -23,7 +23,7 @@ def gid(i):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("Dungeon Assist v0.2 ready as", bot.user)
+    print("Dungeon Assist v0.3 ready as", bot.user)
 
 @bot.tree.error
 async def tree_error(i, error):
