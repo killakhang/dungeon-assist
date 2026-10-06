@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 from dungeon_assist.store import Store
 from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.board import render_board
-from dungeon_assist.character2024 import DEFAULT_2024, next_question
+from dungeon_assist.character2024 import DEFAULT_2024, next_question, choices_for, help_for
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed, plan_action
 from dungeon_assist.rules2024 import RULESET, help_topic, check_sheet
 
 load_dotenv()
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("Set DISCORD_TOKEN in your environment or .env")
@@ -239,15 +239,37 @@ async def character_create(i, name: str, character_class: str = "Unchosen", spec
     ]
     await i.response.send_message("\n".join(lines))
 class Learn2024View(discord.ui.View):
-    def __init__(self, character, field, explanation):
+    def __init__(self, character, q):
         super().__init__(timeout=300)
-        self.character=character
-        self.field=field
-        self.explanation=explanation
+        self.character = character
+        self.q = q
+        opts = choices_for(q["key"])
+        if opts:
+            menu = discord.ui.Select(
+                placeholder="Choose an option...",
+                options=[discord.SelectOption(label=n, description=d[:100]) for n,d in opts[:25]]
+            )
+            async def choose(interaction):
+                s = store.sheet(gid(interaction), self.character)
+                s[self.q["key"]] = menu.values[0]
+                store.save_sheet(gid(interaction), self.character, s)
+                await interaction.response.send_message("Saved **"+self.q["label"]+"**: "+menu.values[0]+"\nUse /character_build_2024 to continue.", ephemeral=True)
+            menu.callback = choose
+            self.add_item(menu)
 
     @discord.ui.button(label="What is this?", style=discord.ButtonStyle.secondary, emoji="❓")
     async def learn(self, i: discord.Interaction, button: discord.ui.Button):
-        await i.response.send_message("**"+self.field+" — beginner explanation**\n"+self.explanation+"\n\nWhen you're ready, use /character_build_2024 again. Your character is still saved.", ephemeral=True)
+        await i.response.send_message("**"+self.q["label"]+" — beginner explanation**\n"+help_for(self.q["key"])+"\n\nNothing changed. Continue whenever you are ready.", ephemeral=True)
+
+    @discord.ui.button(label="Show examples", style=discord.ButtonStyle.secondary, emoji="📚")
+    async def examples(self, i: discord.Interaction, button: discord.ui.Button):
+        opts = choices_for(self.q["key"])
+        body = "\n".join("**"+n+"** — "+d for n,d in opts) if opts else help_for(self.q["key"])
+        await i.response.send_message(("**Examples — "+self.q["label"]+"**\n"+body)[:1900], ephemeral=True)
+
+    @discord.ui.button(label="Help me choose", style=discord.ButtonStyle.primary, emoji="🎯")
+    async def recommend(self, i: discord.Interaction, button: discord.ui.Button):
+        await i.response.send_message("Use /ai and ask: Help me choose "+self.q["label"]+" for "+self.character+". Explain the choices like I am new to D&D.", ephemeral=True)
 
 @bot.tree.command(name="character_create_2024", description="Create a beginner-friendly 2024 rules character")
 async def character_create_2024(i, name: str):
@@ -259,7 +281,7 @@ async def character_create_2024(i, name: str):
         store.save_sheet(gid(i),name,s)
         q=next_question(s)
         if q:
-            await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+name+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nWhen you know your answer, use /character_answer_2024.",view=Learn2024View(name,q["label"],q["explanation"]))
+            await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+name+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nWhen you know your answer, use /character_answer_2024.",view=Learn2024View(name,q))
         else:
             await i.response.send_message("✅ **"+name+"** already has the core 2024 builder fields.")
     except Exception as e:
@@ -272,7 +294,7 @@ async def character_build_2024(i, character: str):
     if not q:
         await i.response.send_message("✅ **Core character setup complete.**\nUse /character_show to review "+character+".")
         return
-    await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+character+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nAnswer with /character_answer_2024.",view=Learn2024View(character,q["label"],q["explanation"]))
+    await i.response.send_message("🧙 **2024 CHARACTER BUILDER**\nCharacter: **"+character+"**\n\n**"+q["label"]+"**\n"+q["question"]+"\n\nDon't know what that means? Tap **What is this?** below.\n\nAnswer with /character_answer_2024.",view=Learn2024View(character,q))
 
 @bot.tree.command(name="character_answer_2024", description="Answer the current 2024 character-builder question")
 async def character_answer_2024(i, character: str, answer: str):
@@ -297,7 +319,7 @@ async def character_answer_2024(i, character: str, answer: str):
     if not nxt:
         await i.response.send_message("✅ **Core 2024 character setup complete!**\n"+character+" is saved.\nUse **/character_show** to review the sheet.")
         return
-    await i.response.send_message("✅ Saved **"+q["label"]+"**: "+str(value)+"\n\n**Next — "+nxt["label"]+"**\n"+nxt["question"]+"\n\nIf you don't know what this means, tap **What is this?**.",view=Learn2024View(character,nxt["label"],nxt["explanation"]))
+    await i.response.send_message("✅ Saved **"+q["label"]+"**: "+str(value)+"\n\n**Next — "+nxt["label"]+"**\n"+nxt["question"]+"\n\nIf you don't know what this means, tap **What is this?**.",view=Learn2024View(character,nxt))
 
 @bot.tree.command(name="character_show", description="Show a clean character sheet")
 async def character_show(i, name: str):
