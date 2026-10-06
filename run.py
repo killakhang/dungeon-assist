@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
 from dungeon_assist.store import Store
-from dungeon_assist.dice import roll_expression
+from dungeon_assist.dice import roll_expression, d20, ability_modifier
 from dungeon_assist.ai import ask_ai, ai_enabled, load_seed
 
 load_dotenv()
@@ -23,7 +23,7 @@ def gid(i):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("Dungeon Assist v0.3 ready as", bot.user)
+    print("Dungeon Assist v0.4 ready as", bot.user)
 
 @bot.tree.error
 async def tree_error(i, error):
@@ -193,6 +193,153 @@ async def character_ai(i, name: str, message: str):
         await i.followup.send(answer[:1900])
     except Exception as e:
         await i.followup.send("AI unavailable: " + str(e))
+def sheet_embed(s):
+    e=discord.Embed(title=s["name"], description=str(s.get("species","Unchosen"))+" • "+str(s.get("class","Unchosen"))+" "+str(s.get("level",1)))
+    if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
+    e.add_field(name="HP",value=str(s["hp"])+"/"+str(s["max_hp"])+"  Temp "+str(s.get("temp_hp",0)),inline=True)
+    e.add_field(name="AC",value=str(s.get("armor_class","—")),inline=True)
+    e.add_field(name="Speed",value=str(s.get("speed","—")),inline=True)
+    stats=[]
+    for key,label in [("strength","STR"),("dexterity","DEX"),("constitution","CON"),("intelligence","INT"),("wisdom","WIS"),("charisma","CHA")]:
+        stats.append(label+" "+str(s.get(key) if s.get(key) is not None else "—"))
+    e.add_field(name="Abilities",value="\n".join(stats),inline=False)
+    e.set_footer(text="Dungeon Assist • character sheet")
+    return e
+
+SKILLS={"acrobatics":"dexterity","animal_handling":"wisdom","arcana":"intelligence","athletics":"strength","deception":"charisma","history":"intelligence","insight":"wisdom","intimidation":"charisma","investigation":"intelligence","medicine":"wisdom","nature":"intelligence","perception":"wisdom","performance":"charisma","persuasion":"charisma","religion":"intelligence","sleight_of_hand":"dexterity","stealth":"dexterity","survival":"wisdom"}
+
+@bot.tree.command(name="character_edit", description="Set a character-sheet field")
+async def character_edit(i, name: str, field: str, value: str):
+    allowed={"species","background","alignment","strength","dexterity","constitution","intelligence","wisdom","charisma","armor_class","speed","personality","ideals","bonds","flaws","equipment","backstory","portrait_url","ruleset"}
+    field=field.lower()
+    if field not in allowed: raise ValueError("Unsupported field. Use /character_show to see the sheet.")
+    if field in {"strength","dexterity","constitution","intelligence","wisdom","charisma","armor_class","speed"}: value=int(value)
+    s=store.patch_sheet(gid(i),name,{field:value})
+    await i.response.send_message(embed=sheet_embed(s))
+
+@bot.tree.command(name="portrait", description="Set a character portrait URL")
+async def portrait(i, character: str, image_url: str):
+    s=store.patch_sheet(gid(i),character,{"portrait_url":image_url})
+    await i.response.send_message(embed=sheet_embed(s))
+
+@bot.tree.command(name="check", description="Roll a character skill check")
+async def check(i, character: str, skill: str, advantage: bool=False, disadvantage: bool=False):
+    s=store.sheet(gid(i),character); key=skill.lower().replace(" ","_")
+    if key not in SKILLS: raise ValueError("Unknown skill.")
+    ability=SKILLS[key]; mod=ability_modifier(s.get(ability))
+    profs=[str(x).lower().replace(" ","_") for x in s.get("skill_proficiencies",[])]
+    if key in profs: mod+=2+(max(1,int(s.get("level",1)))-1)//4
+    r=d20(mod,advantage,disadvantage)
+    e=discord.Embed(title=character+" • "+skill.title(),description="🎲 "+str(r["rolls"])+"\n**Total: "+str(r["total"])+"**")
+    e.add_field(name="Modifier",value=("%+d"%mod),inline=True); e.add_field(name="Mode",value=r["mode"].title(),inline=True)
+    await i.response.send_message(embed=e)
+
+@bot.tree.command(name="save", description="Roll an ability saving throw")
+async def save(i, character: str, ability: str, advantage: bool=False, disadvantage: bool=False):
+    s=store.sheet(gid(i),character); ability=ability.lower()
+    aliases={"str":"strength","dex":"dexterity","con":"constitution","int":"intelligence","wis":"wisdom","cha":"charisma"}; ability=aliases.get(ability,ability)
+    if ability not in aliases.values(): raise ValueError("Use STR, DEX, CON, INT, WIS, or CHA.")
+    mod=ability_modifier(s.get(ability)); profs=[str(x).lower() for x in s.get("save_proficiencies",[])]
+    if ability in profs or ability[:3] in profs: mod+=2+(max(1,int(s.get("level",1)))-1)//4
+    r=d20(mod,advantage,disadvantage)
+    await i.response.send_message(embed=discord.Embed(title=character+" • "+ability.title()+" Save",description="🎲 "+str(r["rolls"])+"\n**Total: "+str(r["total"])+"**"))
+
+@bot.tree.command(name="attack", description="Make an attack against AC and roll damage on a hit")
+async def attack(i, character: str, target: str, attack_bonus: int, target_ac: int, damage: str="1d8"):
+    a=d20(attack_bonus); hit=a["natural"]==20 or (a["natural"]!=1 and a["total"]>=target_ac)
+    e=discord.Embed(title="⚔️ "+character+" attacks "+target)
+    e.add_field(name="Attack",value=str(a["rolls"])+" "+("%+d"%attack_bonus)+" = **"+str(a["total"])+"**",inline=False)
+    e.add_field(name="Target AC",value=str(target_ac),inline=True)
+    e.add_field(name="Result",value="CRITICAL HIT" if a["natural"]==20 else "HIT" if hit else "MISS",inline=True)
+    if hit:
+        expr=damage
+        if a["natural"]==20:
+            m=__import__("re").match(r"^(\d*)d(\d+)([+-]\d+)?$",damage.replace(" ",""))
+            if m: expr=str(int(m.group(1) or 1)*2)+"d"+m.group(2)+(m.group(3) or "")
+        d=roll_expression(expr); e.add_field(name="Damage",value=d["detail"]+" = **"+str(d["total"])+"**",inline=False)
+    await i.response.send_message(embed=e)
+
+@bot.tree.command(name="damage", description="Damage a tracked character")
+async def damage(i, character: str, amount: int):
+    c=store.set_hp_delta(gid(i),character,-abs(amount)); await i.response.send_message("💥 **"+c["name"]+"**\nHP "+str(c["hp"])+"/"+str(c["max_hp"]))
+
+@bot.tree.command(name="heal", description="Heal a tracked character")
+async def heal(i, character: str, amount: int):
+    c=store.set_hp_delta(gid(i),character,abs(amount)); await i.response.send_message("💚 **"+c["name"]+"**\nHP "+str(c["hp"])+"/"+str(c["max_hp"]))
+
+@bot.tree.command(name="temp_hp", description="Set temporary hit points")
+async def temp_hp(i, character: str, amount: int):
+    s=store.set_temp_hp(gid(i),character,amount); await i.response.send_message("🛡️ **"+character+"**\nTemporary HP "+str(s.get("temp_hp",0)))
+
+@bot.tree.command(name="combat_begin", description="Start combat using current initiative")
+async def combat_begin(i):
+    store.combat_begin(gid(i)); rows=store.initiative(gid(i))
+    await i.response.send_message(embed=discord.Embed(title="⚔️ Combat Begins",description="\n".join(str(n+1)+". "+x["name"]+" • "+str(x["total"]) for n,x in enumerate(rows)) or "Add combatants with /initiative_add"))
+
+@bot.tree.command(name="combat_next", description="Advance to the next combatant")
+async def combat_next(i):
+    s=store.combat_next(gid(i)); await i.response.send_message("⚔️ **Round "+str(s["round"])+"**\nTurn: **"+s["combatant"]["name"]+"**")
+
+@bot.tree.command(name="combat_prev", description="Go back one combat turn")
+async def combat_prev(i):
+    s=store.combat_next(gid(i),True); await i.response.send_message("⚔️ **Round "+str(s["round"])+"**\nTurn: **"+s["combatant"]["name"]+"**")
+
+@bot.tree.command(name="combat_status", description="Show combat round and turn order")
+async def combat_status(i):
+    s=store.combat_state(gid(i)); rows=store.initiative(gid(i))
+    lines=[]
+    for n,x in enumerate(rows): lines.append(("➡️ " if s["active"] and n==s["turn"] else "")+str(n+1)+". "+x["name"]+" • "+str(x["total"]))
+    await i.response.send_message(embed=discord.Embed(title="⚔️ Combat • Round "+str(s["round"]),description="\n".join(lines) or "No combatants."))
+
+@bot.tree.command(name="combat_end", description="End combat and clear initiative")
+async def combat_end(i):
+    store.combat_end(gid(i)); await i.response.send_message("Combat ended.")
+
+@bot.tree.command(name="relationship", description="Set a relationship metric from -100 to 100")
+async def relationship(i, source: str, target: str, metric: str, value: int):
+    r=store.relationship_set(gid(i),source,target,metric.lower(),value)
+    await i.response.send_message("**"+source+" → "+target+"**\nAffinity "+str(r["affinity"])+"\nTrust "+str(r["trust"])+"\nFear "+str(r["fear"])+"\nResentment "+str(r["resentment"]))
+
+@bot.tree.command(name="relationships", description="Show relationship state")
+async def relationships(i, character: str=""):
+    rows=store.relationships(gid(i),character or None)
+    await i.response.send_message("\n".join(x["source"]+" → "+x["target"]+" | affinity "+str(x["affinity"])+" | trust "+str(x["trust"])+" | fear "+str(x["fear"])+" | resentment "+str(x["resentment"]) for x in rows)[:1900] or "No relationships yet.")
+
+@bot.tree.command(name="lore_add", description="Add campaign lore")
+async def lore_add(i, key: str, text: str, secret: bool=False):
+    store.lore_set(gid(i),key,text,secret); await i.response.send_message("Lore saved: **"+key+"**",ephemeral=secret)
+
+@bot.tree.command(name="lore", description="Read campaign lore")
+async def lore(i, key: str):
+    x=store.lore_get(gid(i),key,False); await i.response.send_message(embed=discord.Embed(title="📚 "+x["key"],description=x["text"][:4000]))
+
+@bot.tree.command(name="rule", description="Ask the AI to explain a D&D rule")
+async def rule(i, question: str):
+    await i.response.defer()
+    try: await i.followup.send(ask_ai("Explain this D&D rules question clearly. If edition matters, say so. Do not invent a rule: "+question,purpose="D&D rules helper")[:1900])
+    except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="world", description="Ask about or develop the campaign world")
+async def world(i, question: str):
+    await i.response.defer()
+    try: await i.followup.send(ask_ai(question,purpose="campaign world and lore assistant")[:1900])
+    except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="proxy", description="Roleplay a message as a configured character")
+async def proxy(i, character: str, message: str):
+    s=store.sheet(gid(i),character); await i.response.defer()
+    try:
+        answer=ask_ai("Sheet: "+str(s)+"\nSituation/message: "+message+"\nReply only as this character.",character,"character proxy")
+        e=discord.Embed(description=answer[:4000]); e.set_author(name=character)
+        if s.get("portrait_url"): e.set_thumbnail(url=s["portrait_url"])
+        await i.followup.send(embed=e)
+    except Exception as e: await i.followup.send("AI unavailable: "+str(e))
+
+@bot.tree.command(name="reset_campaign", description="DANGER: reset campaign state after confirmation")
+async def reset_campaign(i, confirmation: str):
+    if confirmation != "RESET": await i.response.send_message("Reset cancelled. Type exactly RESET to confirm.",ephemeral=True); return
+    store.snapshot(gid(i)); store.campaign_reset(gid(i)); await i.response.send_message("Campaign state reset. A snapshot was created first.")
+
 @bot.tree.command(name="hp", description="Set current HP")
 async def hp(i, character: str, amount: int):
     c = store.set_hp(gid(i), character, amount)
