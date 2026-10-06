@@ -2,7 +2,7 @@
 
 Discord-first D&D assistant and DM simulation platform.
 
-## v0.2 playable core
+## Current release: v0.9
 - `/dndhelp`
 - `/campaign_setup`
 - `/character_create`
@@ -122,3 +122,15 @@ Planned beginner sheet tools:
 - `/sheet_check` for missing or inconsistent character fields
 - `/character_sheet` for a readable finished sheet
 - `/character_levelup` for guided 2024 leveling
+
+
+### v0.9 — 2024 character-sheet release
+
+- canonical character ruleset is `2024_5e`
+- new characters are no longer stamped as 2014 characters
+- `/sheet_help` gives built-in beginner explanations without requiring AI
+- `/sheet_check` checks core fields and obvious ability-score/HP inconsistencies
+- `/character_sheet` provides a compact 2024 sheet view
+- existing AI character builder, memory, knowledge, combat, board, factions, relationships, lore, reset safety, and campaign tools remain available
+
+This project provides tooling and original explanations; it does not reproduce proprietary rulebook text.
