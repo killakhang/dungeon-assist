@@ -1,67 +1,59 @@
-"""Editable, print-friendly D&D 2024-style character sheet generator."""
+"""Fill the official 2024 D&D character sheet with editable AcroForm overlays."""
 from io import BytesIO
+from pathlib import Path
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
+from pypdf import PdfReader, PdfWriter
 
 W,H=letter
+TEMPLATE=Path(__file__).resolve().parent.parent/"assets"/"DnD_2024_Character-Sheet.pdf"
 
 def _v(s,k,d=""):
     v=s.get(k,d)
     if isinstance(v,list): return ", ".join(map(str,v))
-    if isinstance(v,dict): return ", ".join(f"{a}: {b}" for a,b in v.items())
     return "" if v is None else str(v)
 
 def _mod(v):
-    try:
-        m=(int(v)-10)//2
-        return f"{m:+d}"
-    except Exception: return ""
+    try:return f"{(int(v)-10)//2:+d}"
+    except:return ""
+
+def _overlay(sheet,page):
+    out=BytesIO(); c=canvas.Canvas(out,pagesize=letter); form=c.acroform
+    def f(name,x,y,w,h=14,value="",size=8,multi=False):
+        form.textfield(name=name,value=str(value or ""),x=x,y=y,width=w,height=h,borderWidth=0,
+          fillColor=None,textColor=colors.black,fontName="Helvetica",fontSize=size,fieldFlags=4096 if multi else 0)
+    if page==0:
+        f("name",25,739,220,18,_v(sheet,"name"),10); f("background",25,716,120,14,_v(sheet,"background"))
+        f("class",150,716,100,14,_v(sheet,"class")); f("species",25,694,120,14,_v(sheet,"species"))
+        f("subclass",150,694,100,14,_v(sheet,"subclass")); f("level",264,716,35,14,_v(sheet,"level"),9)
+        f("armor_class",321,715,44,32,_v(sheet,"armor_class"),14); f("hp",385,696,50,16,_v(sheet,"hp"),11)
+        f("max_hp",443,696,42,16,_v(sheet,"max_hp")); f("temp_hp",443,722,42,16,_v(sheet,"temp_hp"))
+        f("hit_dice",497,696,42,16,_v(sheet,"hit_dice")); f("proficiency_bonus",17,615,86,28,_v(sheet,"proficiency_bonus"),13)
+        f("initiative_bonus",229,614,72,20,_v(sheet,"initiative_bonus"),11); f("speed",321,614,72,20,_v(sheet,"speed"),11)
+        f("passive_perception",508,614,79,20,_v(sheet,"passive_perception"),10)
+        coords={"strength":(37,527),"dexterity":(37,405),"constitution":(37,281),"intelligence":(130,588),"wisdom":(130,405),"charisma":(130,281)}
+        for k,(x,y) in coords.items(): f(k,x+32,y,38,20,_v(sheet,k),11); f(k+"_modifier",x,y+4,34,24,_mod(sheet.get(k)),13)
+        f("saving_throws",119,468,90,190,_v(sheet,"saving_throws"),7,True); f("skills",119,326,90,145,_v(sheet,"skills"),7,True)
+        f("attacks",226,471,361,143,_v(sheet,"attacks"),8,True); f("class_features",226,221,361,230,_v(sheet,"class_features") or _v(sheet,"features_traits"),8,True)
+        f("species_traits",226,25,174,165,_v(sheet,"species_traits"),8,True); f("feats",412,25,175,165,_v(sheet,"feats"),8,True)
+        f("proficiencies_languages",17,25,194,120,_v(sheet,"proficiencies_languages"),7,True)
+    else:
+        f("spellcasting_ability",17,733,118,18,_v(sheet,"spellcasting_ability"),9); f("spell_save_dc",48,681,86,18,_v(sheet,"spell_save_dc"),10)
+        f("spell_attack_bonus",48,645,86,18,_v(sheet,"spell_attack_bonus"),10); f("spell_slots",151,672,245,70,_v(sheet,"spell_slots"),7,True)
+        spells=_v(sheet,"prepared_spells") or _v(sheet,"cantrips"); f("prepared_spells",17,25,378,595,spells,7,True)
+        f("appearance",411,683,177,78,_v(sheet,"appearance"),8,True)
+        story=_v(sheet,"backstory"); pers=_v(sheet,"personality"); combined=(story+"\n\n"+pers).strip()
+        f("backstory_personality",411,481,177,170,combined,8,True); f("alignment",411,464,177,14,_v(sheet,"alignment"),8)
+        f("languages",411,390,177,52,_v(sheet,"proficiencies_languages"),8,True); f("equipment",411,95,177,266,_v(sheet,"equipment"),8,True)
+        f("coins",411,24,177,40,_v(sheet,"coins"),9)
+    c.save(); out.seek(0); return out
 
 def build_character_pdf(sheet):
-    out=BytesIO(); c=canvas.Canvas(out,pagesize=letter)
-    form=c.acroform
-    c.setTitle(f"{_v(sheet,'name','Character')} - Editable Character Sheet")
-    def title(txt,y):
-        c.setFont("Helvetica-Bold",12); c.drawString(36,y,txt)
-        c.setStrokeColor(colors.HexColor("#777777")); c.line(36,y-4,W-36,y-4)
-    def field(label,key,x,y,w=150,h=18,value=None,multi=False):
-        c.setFont("Helvetica-Bold",6.5); c.setFillColor(colors.HexColor("#444444")); c.drawString(x,y+h+3,label.upper())
-        val=_v(sheet,key) if value is None else str(value)
-        flags=4096 if multi else 0
-        form.textfield(name=key,value=val,x=x,y=y,width=w,height=h,borderWidth=.7,borderColor=colors.HexColor("#777777"),
-            fillColor=colors.white,textColor=colors.black,fontName="Helvetica",fontSize=8,fieldFlags=flags)
-    c.setFillColor(colors.black); c.setFont("Helvetica-Bold",18); c.drawString(36,754,"2024 CHARACTER SHEET")
-    c.setFont("Helvetica",7); c.drawRightString(W-36,758,"Editable • Wopples Dungeon Buddy")
-    field("Character Name","name",36,710,230); field("Class","class",278,710,100); field("Level","level",390,710,45)
-    field("Species","species",447,710,109); field("Background","background",36,674,160); field("Alignment","alignment",208,674,120)
-    field("Ruleset","ruleset",340,674,216,value=_v(sheet,"ruleset","D&D 2024"))
-    title("ABILITY SCORES",646)
-    abilities=[("STR","strength"),("DEX","dexterity"),("CON","constitution"),("INT","intelligence"),("WIS","wisdom"),("CHA","charisma")]
-    x=36
-    for lab,key in abilities:
-        field(lab,key,x,604,54,22); field("MOD",key+"_modifier",x,568,54,18,value=_mod(sheet.get(key))); x+=88
-    title("COMBAT",544)
-    field("Armor Class","armor_class",36,502,75); field("Initiative","initiative_bonus",123,502,75); field("Speed","speed",210,502,75)
-    field("Current HP","hp",297,502,75); field("Max HP","max_hp",384,502,75); field("Temp HP","temp_hp",471,502,75)
-    field("Hit Dice","hit_dice",36,466,110); field("Conditions","conditions",158,466,258); field("Inspiration","inspiration",428,466,118)
-    title("PROFICIENCIES, ATTACKS & EQUIPMENT",442)
-    field("Proficiencies / Languages","proficiencies_languages",36,366,245,54,multi=True)
-    field("Attacks","attacks",293,366,263,54,multi=True)
-    field("Features & Traits","features_traits",36,278,245,66,multi=True)
-    field("Equipment","equipment",293,278,263,66,multi=True)
-    title("ROLEPLAY",252)
-    field("Personality","personality",36,188,245,42,multi=True); field("Ideals","ideals",293,188,263,42,multi=True)
-    field("Bonds","bonds",36,124,245,42,multi=True); field("Flaws","flaws",293,124,263,42,multi=True)
-    c.setFont("Helvetica",6.5); c.drawString(36,92,"Fields remain editable in PDF viewers that support AcroForm forms.")
-    c.showPage()
-    c.setFont("Helvetica-Bold",18); c.drawString(36,754,_v(sheet,"name","Character")+" — DETAILS")
-    title("APPEARANCE & STORY",724)
-    field("Appearance","appearance",36,624,520,72,multi=True); field("Backstory","backstory",36,446,520,150,multi=True)
-    field("Allies & Organizations","allies_organizations",36,352,250,66,multi=True); field("Treasure","treasure",306,352,250,66,multi=True)
-    title("SPELLCASTING",324)
-    field("Spellcasting Class","spellcasting_class",36,282,140); field("Ability","spellcasting_ability",188,282,90)
-    field("Save DC","spell_save_dc",290,282,80); field("Attack Bonus","spell_attack_bonus",382,282,100)
-    field("Cantrips","cantrips",36,194,250,66,multi=True); field("Spells","spells",306,194,250,66,multi=True)
-    field("Spell Slots","spell_slots",36,106,520,66,multi=True)
-    c.save(); out.seek(0); return out
+    if not TEMPLATE.exists():
+        raise FileNotFoundError(f"Missing character sheet template: {TEMPLATE}")
+    base=PdfReader(str(TEMPLATE)); writer=PdfWriter()
+    for i,p in enumerate(base.pages):
+        ov=PdfReader(_overlay(sheet,i)); p.merge_page(ov.pages[0]); writer.add_page(p)
+    writer.set_need_appearances_writer()
+    out=BytesIO(); writer.write(out); out.seek(0); return out
