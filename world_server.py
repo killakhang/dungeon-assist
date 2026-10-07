@@ -45,7 +45,35 @@ class ChatRequest(BaseModel):
     message: str
 
 class CharacterPatch(BaseModel):
+    name: str | None = None
+    class_name: str | None = None
+    level: int | None = None
+    species: str | None = None
+    background: str | None = None
+    alignment: str | None = None
+    strength: int | None = None
+    dexterity: int | None = None
+    constitution: int | None = None
+    intelligence: int | None = None
+    wisdom: int | None = None
+    charisma: int | None = None
+    hp: int | None = None
+    max_hp: int | None = None
+    temp_hp: int | None = None
+    armor_class: int | None = None
+    speed: str | None = None
+    initiative_bonus: str | None = None
+    hit_dice: str | None = None
     personality: str | None = None
+    ideals: str | None = None
+    bonds: str | None = None
+    flaws: str | None = None
+    appearance: str | None = None
+    backstory: str | None = None
+    proficiencies_languages: str | None = None
+    features_traits: str | None = None
+    attacks: str | None = None
+    equipment: str | None = None
 
 @app.get("/")
 async def home():
@@ -68,7 +96,10 @@ async def web_character(name:str):
 async def web_character_patch(name:str, patch:CharacterPatch):
     _web_sheet(name)
     updates={}
-    if patch.personality is not None: updates["personality"]=[x.strip() for x in patch.personality.split(",") if x.strip()]
+    for key,value in patch.model_dump(exclude_none=True).items():
+        if key == "class_name": key = "class"
+        if key == "personality": value=[x.strip() for x in value.split(",") if x.strip()]
+        updates[key]=value
     return store.patch_sheet(WEB_GUILD,name,updates)
 
 @app.post("/api/chat")
