@@ -130,6 +130,29 @@ def _web_sheet(name):
         })
         return store.sheet(WEB_GUILD,name)
 
+WOPPLES_CANON={
+    "ruleset":"D&D 2024","species":"Goblin","background":"Wayfarer","alignment":"Chaotic Neutral","class":"Paladin","subclass":"Oath of Vengeance","level":10,
+    "strength":18,"dexterity":14,"constitution":16,"intelligence":10,"wisdom":12,"charisma":18,"proficiency_bonus":"+4","armor_class":20,"hp":94,"max_hp":94,"temp_hp":0,
+    "speed":"30 ft.","initiative_bonus":"+2","hit_dice":"10d10","passive_perception":"15","heroic_inspiration":"No",
+    "saving_throws":"○ Strength +4\\n○ Dexterity +2\\n○ Constitution +3\\n○ Intelligence +0\\n● Wisdom +5\\n● Charisma +8",
+    "skills":"○ Acrobatics +2\\n○ Animal Handling +1\\n○ Arcana +0\\n● Athletics +8\\n○ Deception +4\\n○ History +0\\n● Insight +5\\n○ Intimidation +4\\n○ Investigation +0\\n○ Medicine +1\\n○ Nature +0\\n● Perception +5\\n○ Performance +4\\n● Persuasion +8\\n○ Religion +0\\n○ Sleight of Hand +2\\n○ Stealth +2\\n○ Survival +1",
+    "senses":"Darkvision 60 ft.; Passive Perception 15","proficiencies_languages":"Armor: Light, Medium, Heavy, Shields\\nWeapons: Simple, Martial\\nLanguages: Common, Goblin",
+    "attacks":"Longsword — +8 to hit — 1d8+4 slashing (1d10+4 versatile)\\nJavelin — +8 to hit — 1d6+4 piercing","weapon_masteries":"Longsword; Javelin",
+    "class_features":"Lay on Hands; Fighting Style; Paladin's Smite; Channel Divinity; Extra Attack; Faithful Steed; Aura of Protection; Abjure Foes; Aura of Courage",
+    "species_traits":"Darkvision; Fey Ancestry; Fury of the Small; Nimble Escape","features_traits":"Chaotic goblin paladin; protects friends fiercely, solves sacred problems with questionable methods.",
+    "feats":"Ability Score Improvements used to support Strength and Charisma.","equipment":"Chain Mail; Shield; Longsword; 6 Javelins; Holy Symbol; Priest's Pack","coins":"9 GP",
+    "spellcasting_ability":"Charisma","spell_save_dc":"16","spell_attack_bonus":"+8","cantrips":"","prepared_spells":"Bless\\nCommand\\nCure Wounds\\nDetect Magic\\nProtection from Evil and Good\\nAid\\nFind Steed\\nLesser Restoration\\nRevivify","spell_slots":"1st: 4 / 4\\n2nd: 3 / 3\\n3rd: 2 / 2",
+    "personality":["Chaotic","cartoonish","curious","recklessly confident","loyal when it counts"],"ideals":"Freedom. Rules are tools, not cages.","bonds":"The party is Wopples' people. Wopples may complain, but nobody else gets to hurt them.",
+    "flaws":"Impulsive, distractible, suspicious of authority, and dangerously confident around mysterious buttons.","appearance":"Small green goblin adventurer with expressive ears, battered gear, and the posture of someone about to make a questionable decision.",
+    "backstory":"Wopples became a paladin less because institutions chose him and more because Wopples decided the world needed a champion with worse judgment. His oath is sincere even when his methods are chaotic."
+}
+
+@app.post("/api/character/{name}/canon")
+async def load_canon(name:str):
+    _web_sheet(name)
+    data=dict(WOPPLES_CANON)
+    return store.patch_sheet(WEB_GUILD,name,data)
+
 @app.get("/api/character/{name}")
 async def web_character(name:str):
     return _web_sheet(name)
