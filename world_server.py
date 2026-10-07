@@ -184,6 +184,10 @@ async def web_character_pdf(name:str):
     safe="".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name) or "character"
     return StreamingResponse(pdf,media_type="application/pdf",headers={"Content-Disposition":f'inline; filename="{safe}_character_sheet.pdf"'})
 
+@app.get("/wildheart")
+async def wildheart():
+    return FileResponse("wopples_world/wildheart.html")
+
 @app.get("/world")
 async def world():
     return FileResponse("wopples_world/index.html")
