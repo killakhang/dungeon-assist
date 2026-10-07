@@ -74,6 +74,24 @@ class CharacterPatch(BaseModel):
     features_traits: str | None = None
     attacks: str | None = None
     equipment: str | None = None
+    subclass: str | None = None
+    proficiency_bonus: str | None = None
+    heroic_inspiration: str | None = None
+    passive_perception: str | None = None
+    senses: str | None = None
+    saving_throws: str | None = None
+    skills: str | None = None
+    weapon_masteries: str | None = None
+    feats: str | None = None
+    class_features: str | None = None
+    species_traits: str | None = None
+    coins: str | None = None
+    spellcasting_ability: str | None = None
+    spell_save_dc: str | None = None
+    spell_attack_bonus: str | None = None
+    cantrips: str | None = None
+    prepared_spells: str | None = None
+    spell_slots: str | None = None
 
 @app.get("/")
 async def home():
